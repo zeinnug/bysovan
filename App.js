@@ -11,6 +11,7 @@ import ProfileScreen from "./pages/ProfileScreen";
 import InventoryScreen from "./pages/InventoryScreen";
 import TransactionScreen from "./pages/TransactionScreen";
 import SalesReportScreen from "./pages/SalesReportScreen"; // BARU - Import SalesReportScreen
+import NewTransactionScreen from "./pages/NewTransactionScreen"; // NEW - Import NewTransactionScreen
 import Login from "./pages/Login";
 
 const Stack = createNativeStackNavigator();
@@ -161,6 +162,16 @@ export default function App() {
             <Stack.Screen 
               name="SalesReport" 
               component={SalesReportScreen}
+              options={{
+                headerShown: false,
+                presentation: 'card',
+              }}
+            />
+
+            {/* NewTransaction Screen - dapat dinavigasi dari TransactionScreen */}
+            <Stack.Screen
+              name="NewTransaction"
+              component={NewTransactionScreen}
               options={{
                 headerShown: false,
                 presentation: 'card',

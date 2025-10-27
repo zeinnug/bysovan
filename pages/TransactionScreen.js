@@ -37,16 +37,6 @@ export default function TransactionScreen({ navigation }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-
-  // Form states for new transaction
-  const [formData, setFormData] = useState({
-    product_name: '',
-    quantity: '',
-    price: '',
-    customer_name: '',
-    payment_method: 'cash',
-  });
 
   // Filter states
   const [filterData, setFilterData] = useState({
@@ -80,31 +70,6 @@ export default function TransactionScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const handleCreateTransaction = async () => {
-    if (!formData.product_name || !formData.quantity || !formData.price) {
-      Alert.alert('Error', 'Mohon lengkapi semua field yang diperlukan');
-      return;
-    }
-
-    setLoading(true);
-    const result = await createTransaction({
-      ...formData,
-      quantity: parseInt(formData.quantity),
-      price: parseFloat(formData.price),
-      total: parseInt(formData.quantity) * parseFloat(formData.price),
-    });
-    setLoading(false);
-
-    if (result.success) {
-      Alert.alert('Sukses', 'Transaksi berhasil dibuat');
-      setModalVisible(false);
-      resetForm();
-      loadTransactions();
-    } else {
-      Alert.alert('Error', result.error);
-    }
-  };
-
   const handleFilter = async () => {
     if (!filterData.date && !filterData.payment_method && !filterData.status) {
       loadTransactions();
@@ -122,16 +87,6 @@ export default function TransactionScreen({ navigation }) {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      product_name: '',
-      quantity: '',
-      price: '',
-      customer_name: '',
-      payment_method: 'cash',
-    });
-  };
-
   const resetFilter = () => {
     setFilterData({
       date: '',
@@ -139,14 +94,6 @@ export default function TransactionScreen({ navigation }) {
       status: '',
     });
     loadTransactions();
-  };
-
-  const handlePrintReceipt = (transaction) => {
-    Alert.alert(
-      'Cetak Struk',
-      `Fitur cetak struk untuk transaksi #${transaction.id || transaction.transaction_id} akan segera tersedia`,
-      [{ text: 'OK' }]
-    );
   };
 
   const formatCurrency = (amount) => {
@@ -246,7 +193,7 @@ export default function TransactionScreen({ navigation }) {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => setModalVisible(true)}
+              onPress={() => navigation.navigate('NewTransaction')}
             >
               <Text style={styles.actionButtonText}>Transaksi Baru</Text>
             </TouchableOpacity>
@@ -340,170 +287,6 @@ export default function TransactionScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
-
-      {/* Add Transaction Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Transaksi Baru</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close-circle" size={28} color={COLORS.davysGray} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.formContainer}>
-              <Text style={styles.label}>Nama Produk *</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.product_name}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, product_name: text })
-                }
-                placeholder="Masukkan nama produk"
-                placeholderTextColor={COLORS.davysGray}
-              />
-
-              <Text style={styles.label}>Jumlah *</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.quantity}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, quantity: text })
-                }
-                placeholder="Masukkan jumlah"
-                placeholderTextColor={COLORS.davysGray}
-                keyboardType="numeric"
-              />
-
-              <Text style={styles.label}>Harga Satuan *</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.price}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, price: text })
-                }
-                placeholder="Masukkan harga"
-                placeholderTextColor={COLORS.davysGray}
-                keyboardType="numeric"
-              />
-
-              <Text style={styles.label}>Nama Customer</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.customer_name}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, customer_name: text })
-                }
-                placeholder="Masukkan nama customer"
-                placeholderTextColor={COLORS.davysGray}
-              />
-
-              <Text style={styles.label}>Metode Pembayaran</Text>
-              <View style={styles.paymentMethodContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.paymentMethodButton,
-                    formData.payment_method === 'cash' && styles.paymentMethodActive,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, payment_method: 'cash' })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.paymentMethodText,
-                      formData.payment_method === 'cash' &&
-                        styles.paymentMethodTextActive,
-                    ]}
-                  >
-                    Cash
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.paymentMethodButton,
-                    formData.payment_method === 'card' && styles.paymentMethodActive,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, payment_method: 'card' })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.paymentMethodText,
-                      formData.payment_method === 'card' &&
-                        styles.paymentMethodTextActive,
-                    ]}
-                  >
-                    Card
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.paymentMethodButton,
-                    formData.payment_method === 'transfer' &&
-                      styles.paymentMethodActive,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, payment_method: 'transfer' })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.paymentMethodText,
-                      formData.payment_method === 'transfer' &&
-                        styles.paymentMethodTextActive,
-                    ]}
-                  >
-                    Transfer
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {formData.quantity && formData.price && (
-                <View style={styles.totalContainer}>
-                  <Text style={styles.totalLabel}>Total:</Text>
-                  <Text style={styles.totalAmount}>
-                    {formatCurrency(
-                      parseInt(formData.quantity || 0) *
-                        parseFloat(formData.price || 0)
-                    )}
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setModalVisible(false);
-                  resetForm();
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Batal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.submitButton}
-                onPress={handleCreateTransaction}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.submitButtonText}>Simpan</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -710,126 +493,5 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontSize: 16,
     color: COLORS.davysGray,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 20,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.linen,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-  },
-  formContainer: {
-    padding: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.jet,
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  input: {
-    backgroundColor: COLORS.linen,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: COLORS.jet,
-    borderWidth: 1,
-    borderColor: COLORS.linen,
-  },
-  paymentMethodContainer: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-  paymentMethodButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: COLORS.linen,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.linen,
-  },
-  paymentMethodActive: {
-    backgroundColor: COLORS.pumpkin,
-    borderColor: COLORS.pumpkin,
-  },
-  paymentMethodText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.davysGray,
-  },
-  paymentMethodTextActive: {
-    color: COLORS.white,
-  },
-  totalContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.linen,
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.jet,
-  },
-  totalAmount: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.pumpkin,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.linen,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 15,
-    borderRadius: 8,
-    backgroundColor: COLORS.linen,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.davysGray,
-  },
-  submitButton: {
-    flex: 1,
-    paddingVertical: 15,
-    borderRadius: 8,
-    backgroundColor: COLORS.pumpkin,
-    alignItems: 'center',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.white,
   },
 });
