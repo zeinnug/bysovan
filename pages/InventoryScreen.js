@@ -225,10 +225,31 @@ const InventoryScreen = ({ navigation }) => {
 
     setIsSubmitting(true);
 
-    const result = await inventoryAPI.addProduct(formData);
+    // ✅ AUTO-GENERATE BARCODE jika kosong
+    let barcodeToSave = formData.barcode;
+    
+    if (!barcodeToSave || barcodeToSave.trim() === '') {
+      // Generate barcode otomatis
+      const timestamp = Date.now();
+      const random = Math.floor(1000 + Math.random() * 9000);
+      barcodeToSave = `BYS${timestamp}${random}`;
+      
+      console.log('🔥 Barcode auto-generated:', barcodeToSave);
+    }
+
+    // Data yang akan dikirim ke API dengan barcode yang sudah ada/generated
+    const dataToSubmit = {
+      ...formData,
+      barcode: barcodeToSave
+    };
+
+    const result = await inventoryAPI.addProduct(dataToSubmit);
 
     if (result.success) {
-      Alert.alert('Berhasil', 'Produk berhasil ditambahkan!');
+      Alert.alert(
+        'Berhasil!', 
+        `Produk berhasil ditambahkan!\nBarcode: ${barcodeToSave}`
+      );
       handleCloseAddModal();
       loadInventoryData();
     } else {

@@ -11,6 +11,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 
@@ -22,6 +23,23 @@ const AddProductModal = ({
   onSubmit, 
   isSubmitting 
 }) => {
+  
+  // ✅ Fungsi Generate Barcode Otomatis
+  const handleGenerateBarcode = () => {
+    // Format: BYS + Timestamp + Random 4 digit
+    const timestamp = Date.now();
+    const random = Math.floor(1000 + Math.random() * 9000); // 4 digit random
+    const newBarcode = `BYS${timestamp}${random}`;
+    
+    onFormChange('barcode', newBarcode);
+    
+    Alert.alert(
+      'Barcode Generated!',
+      `Barcode berhasil dibuat: ${newBarcode}`,
+      [{ text: 'OK' }]
+    );
+  };
+
   return (
     <Modal
       animationType="slide"
@@ -187,18 +205,49 @@ const AddProductModal = ({
               />
             </View>
 
-            {/* Barcode Card */}
+            {/* ✅ Barcode Card - UPDATED dengan Tombol Generate */}
             <View style={styles.formSection}>
               <View style={styles.formSectionHeader}>
-                <Text style={styles.formSectionTitle}>Barcode</Text>
+                <Octicons name="code" size={20} color="#FC6A0A" />
+                <Text style={[styles.formSectionTitle, styles.orangeText]}>Barcode</Text>
               </View>
+              
+              {/* Input Barcode */}
               <TextInput
                 style={styles.formInput}
-                placeholder="Masukkan barcode atau generate otomatis"
-                placeholderTextColor="#585757"
+                placeholder="Masukkan barcode manual atau generate otomatis"
+                placeholderTextColor="#999"
                 value={formData.barcode}
                 onChangeText={(text) => onFormChange('barcode', text)}
+                editable={true}
               />
+
+              {/* Tombol Generate Barcode */}
+              <TouchableOpacity 
+                style={styles.generateButton}
+                onPress={handleGenerateBarcode}
+                activeOpacity={0.7}
+              >
+                <Octicons name="zap" size={18} color="#FFFFFF" />
+                <Text style={styles.generateButtonText}>Generate Barcode Otomatis</Text>
+              </TouchableOpacity>
+
+              {/* Info Box */}
+              {formData.barcode ? (
+                <View style={styles.barcodeInfoBox}>
+                  <Octicons name="check-circle" size={16} color="#28a745" />
+                  <Text style={styles.barcodeInfoText}>
+                    Barcode siap: {formData.barcode}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.barcodeInfoBox}>
+                  <Octicons name="info" size={16} color="#585757" />
+                  <Text style={styles.barcodeInfoText}>
+                    Klik tombol di atas untuk generate barcode otomatis
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={{ height: 20 }} />
@@ -246,7 +295,7 @@ const styles = StyleSheet.create({
   addModalContainer: {
     width: '95%',
     maxHeight: '90%',
-    backgroundColor: '#F5ECE4', // Linen
+    backgroundColor: '#F5ECE4',
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -256,14 +305,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#292929', // Jet
+    backgroundColor: '#292929',
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
   addModalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#F5ECE4', // Linen
+    color: '#F5ECE4',
   },
 
   // Scrollable Form Area
@@ -274,12 +323,12 @@ const styles = StyleSheet.create({
 
   // Form Section Cards
   formSection: {
-    backgroundColor: '#292929', // Jet
+    backgroundColor: '#292929',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#585757', // Davy's Gray
+    borderColor: '#585757',
   },
   formSectionHeader: {
     flexDirection: 'row',
@@ -290,10 +339,10 @@ const styles = StyleSheet.create({
   formSectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#F5ECE4', // Linen
+    color: '#F5ECE4',
   },
   orangeText: {
-    color: '#FC6A0A', // Pumpkin
+    color: '#FC6A0A',
   },
 
   // Form Layout & Elements
@@ -306,27 +355,66 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   formGroupFull: {
-    // No extra styles needed, just for structure
+    // No extra styles needed
   },
   formLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#F5ECE4', // Linen
+    color: '#F5ECE4',
     marginBottom: 8,
   },
   formInput: {
-    backgroundColor: '#F5ECE4', // Linen
+    backgroundColor: '#F5ECE4',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#292929', // Jet
+    color: '#292929',
     borderWidth: 2,
-    borderColor: '#585757', // Davy's Gray
+    borderColor: '#585757',
   },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+
+  // ✅ NEW: Generate Barcode Button Styles
+  generateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FC6A0A',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+    borderWidth: 2,
+    borderColor: '#E74504',
+  },
+  generateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+
+  // ✅ NEW: Barcode Info Box
+  barcodeInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5ECE4',
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#585757',
+  },
+  barcodeInfoText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#585757',
+    fontWeight: '500',
   },
 
   // Footer & Buttons
@@ -334,21 +422,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     padding: 12,
-    backgroundColor: '#292929', // Jet
+    backgroundColor: '#292929',
     borderTopWidth: 1,
-    borderTopColor: '#585757', // Davy's Gray
+    borderTopColor: '#585757',
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#585757', // Davy's Gray
+    backgroundColor: '#585757',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitButton: {
-    flex: 1.5, // Make it slightly wider
-    backgroundColor: '#FC6A0A', // Pumpkin
+    flex: 1.5,
+    backgroundColor: '#FC6A0A',
     paddingVertical: 14,
     borderRadius: 12,
     flexDirection: 'row',
@@ -357,7 +445,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   submitButtonDisabled: {
-    backgroundColor: '#E74504', // Golden Gate Bridge for disabled/submitting state
+    backgroundColor: '#E74504',
   },
   buttonText: {
     color: '#FFFFFF',
