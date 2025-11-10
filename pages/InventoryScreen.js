@@ -20,7 +20,7 @@ import HistoryModal from '../components/HistoryModal';
 import QRCodeModal from '../components/QRCodeModal';
 
 // Import API Services
-import { inventoryAPI, dummyData } from '../data/api';
+import { getProducts, createProduct, deleteProduct } from '../data/services';
 
 const InventoryScreen = ({ navigation }) => {
   // State Management
@@ -64,17 +64,52 @@ const InventoryScreen = ({ navigation }) => {
   const loadInventoryData = useCallback(async () => {
     setIsLoading(true);
     
-    const result = await inventoryAPI.getProducts();
-    
-    if (result.success) {
-      setInventoryData(result.data);
-      setFilteredProducts(result.data.products);
-    } else {
-      // Fallback ke dummy data
-      const dummyDataProducts = dummyData.getDummyProducts();
-      setInventoryData(dummyDataProducts);
-      setFilteredProducts(dummyDataProducts.products);
-      Alert.alert('Peringatan', 'Gagal memuat data. Menampilkan data contoh.');
+    try {
+      const result = await getProducts();
+      
+      if (result.success) {
+        // Transform data to match expected format
+        const transformedData = {
+          totalProduk: result.data.statistics?.totalProducts || 0,
+          stokMenipis: result.data.statistics?.lowStockProducts || 0,
+          totalStok: result.data.statistics?.totalStock || 0,
+          products: result.data.products.map(p => ({
+            id: p.id,
+            nama: p.name,
+            merek: p.brand,
+            model: p.model,
+            ukuran: p.size,
+            warna: p.color,
+            hargaJual: p.sellingPrice,
+            hargaDiskon: p.discountPrice,
+            stok: p.stock,
+            barcode: p.units?.[0]?.unitCode || '',
+            kategori: p.brand || '-',
+          }))
+        };
+        
+        setInventoryData(transformedData);
+        setFilteredProducts(transformedData.products);
+      } else {
+        Alert.alert('Error', result.message || 'Gagal memuat data produk');
+        setInventoryData({
+          totalProduk: 0,
+          stokMenipis: 0,
+          totalStok: 0,
+          products: []
+        });
+        setFilteredProducts([]);
+      }
+    } catch (error) {
+      console.error('Error loading inventory:', error);
+      Alert.alert('Error', error.message || 'Gagal memuat data produk');
+      setInventoryData({
+        totalProduk: 0,
+        stokMenipis: 0,
+        totalStok: 0,
+        products: []
+      });
+      setFilteredProducts([]);
     }
     
     setIsLoading(false);
@@ -83,15 +118,12 @@ const InventoryScreen = ({ navigation }) => {
 
   // Fetch History Data
   const loadHistoryData = async () => {
-    const result = await inventoryAPI.getHistory();
-
-    if (result.success) {
-      setHistoryData(result.data);
-    } else if (result.fallback) {
-      // fallback jika 404
-      setHistoryData(dummyData.getDummyHistory());
-      Alert.alert('Info', 'Data riwayat tidak ditemukan, menampilkan data contoh.');
-    } else {
+    try {
+      // Note: History/stock opname functionality can be added later
+      // For now, set empty array
+      setHistoryData([]);
+    } catch (error) {
+      console.error('Error loading history:', error);
       setHistoryData([]);
       Alert.alert('Error', 'Gagal memuat data riwayat.');
     }
@@ -176,13 +208,18 @@ const InventoryScreen = ({ navigation }) => {
           text: 'Hapus',
           style: 'destructive',
           onPress: async () => {
-            const result = await inventoryAPI.deleteProduct(productId);
-            
-            if (result.success) {
-              Alert.alert('Berhasil', 'Produk berhasil dihapus');
-              loadInventoryData();
-            } else {
-              Alert.alert('Error', 'Gagal menghapus produk');
+            try {
+              const result = await deleteProduct(productId);
+              
+              if (result.success) {
+                Alert.alert('Berhasil', 'Produk berhasil dihapus');
+                loadInventoryData();
+              } else {
+                Alert.alert('Error', result.message || 'Gagal menghapus produk');
+              }
+            } catch (error) {
+              console.error('Error deleting product:', error);
+              Alert.alert('Error', error.message || 'Gagal menghapus produk');
             }
           }
         }
@@ -237,23 +274,32 @@ const InventoryScreen = ({ navigation }) => {
       console.log('🔥 Barcode auto-generated:', barcodeToSave);
     }
 
-    // Data yang akan dikirim ke API dengan barcode yang sudah ada/generated
-    const dataToSubmit = {
-      ...formData,
-      barcode: barcodeToSave
+    // Transform data untuk API format
+    const productData = {
+      brand: formData.merek || '',
+      model: formData.namaProduk || '',
+      color: formData.warna || '',
+      sizes: formData.ukuran ? [{ size: formData.ukuran, stock: parseInt(formData.stokAwal) || 0 }] : [],
+      sellingPrice: parseFloat(formData.hargaJual) || 0,
+      discountPrice: formData.hargaDiskon ? parseFloat(formData.hargaDiskon) : null,
     };
 
-    const result = await inventoryAPI.addProduct(dataToSubmit);
+    try {
+      const result = await createProduct(productData);
 
-    if (result.success) {
-      Alert.alert(
-        'Berhasil!', 
-        `Produk berhasil ditambahkan!\nBarcode: ${barcodeToSave}`
-      );
-      handleCloseAddModal();
-      loadInventoryData();
-    } else {
-      Alert.alert('Error', result.error || 'Terjadi kesalahan saat menambahkan produk');
+      if (result.success) {
+        Alert.alert(
+          'Berhasil!', 
+          `Produk berhasil ditambahkan!`
+        );
+        handleCloseAddModal();
+        loadInventoryData();
+      } else {
+        Alert.alert('Error', result.message || 'Terjadi kesalahan saat menambahkan produk');
+      }
+    } catch (error) {
+      console.error('Error creating product:', error);
+      Alert.alert('Error', error.message || 'Terjadi kesalahan saat menambahkan produk');
     }
 
     setIsSubmitting(false);

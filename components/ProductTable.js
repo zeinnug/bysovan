@@ -16,7 +16,13 @@ const ProductTable = ({
   onDelete 
 }) => {
   const formatCurrency = (amount) => {
-    return amount.toLocaleString('id-ID', { 
+    const numeric =
+      typeof amount === 'number'
+        ? amount
+        : Number.isFinite(parseFloat(amount))
+        ? parseFloat(amount)
+        : 0;
+    return numeric.toLocaleString('id-ID', { 
       style: 'currency', 
       currency: 'IDR', 
       minimumFractionDigits: 0, 
@@ -75,10 +81,10 @@ const ProductTable = ({
                   {product.stok}
                 </Text>
                 <Text style={[styles.tableCell, { width: 120 }]}>
-                  {formatCurrency(product.hargaBeli)}
+                  {formatCurrency(product.hargaBeli ?? 0)}
                 </Text>
                 <Text style={[styles.tableCell, { width: 120 }]}>
-                  {formatCurrency(product.hargaJual)}
+                  {formatCurrency(product.hargaJual ?? 0)}
                 </Text>
                 
                 {/* Action Buttons */}
