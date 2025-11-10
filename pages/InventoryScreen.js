@@ -67,26 +67,63 @@ const InventoryScreen = ({ navigation }) => {
     try {
       const result = await getProducts();
       
-      if (result.success) {
+      // 🔥 DEBUGGING: Log raw response
+      console.log('=== RAW API RESPONSE ===');
+      console.log('Success:', result.success);
+      console.log('Full Data:', JSON.stringify(result.data, null, 2));
+      
+      if (result.success && result.data.products) {
+        // 🔥 DEBUGGING: Log first product
+        console.log('=== FIRST PRODUCT DETAILS ===');
+        console.log(JSON.stringify(result.data.products[0], null, 2));
+        
         // Transform data to match expected format
         const transformedData = {
           totalProduk: result.data.statistics?.totalProducts || 0,
           stokMenipis: result.data.statistics?.lowStockProducts || 0,
           totalStok: result.data.statistics?.totalStock || 0,
-          products: result.data.products.map(p => ({
-            id: p.id,
-            nama: p.name,
-            merek: p.brand,
-            model: p.model,
-            ukuran: p.size,
-            warna: p.color,
-            hargaJual: p.sellingPrice,
-            hargaDiskon: p.discountPrice,
-            stok: p.stock,
-            barcode: p.units?.[0]?.unitCode || '',
-            kategori: p.brand || '-',
-          }))
+          products: result.data.products.map((p, index) => {
+            // 🔥 DEBUGGING: Log transformation
+            console.log(`=== TRANSFORMING PRODUCT ${index + 1} ===`);
+            console.log('Original:', p);
+            
+            // Generate barcode jika tidak ada
+            let barcodeValue = '';
+            if (p.units && p.units.length > 0 && p.units[0].unitCode) {
+              barcodeValue = p.units[0].unitCode;
+            } else if (p.barcode) {
+              barcodeValue = p.barcode;
+            } else if (p.id) {
+              // Auto-generate barcode dari product ID
+              barcodeValue = `BYS${p.id}${Date.now().toString().slice(-6)}`;
+            }
+            
+            const transformed = {
+              id: p.id,
+              nama: p.name || p.model || '-',
+              merek: p.brand || '-',
+              model: p.model || '-',
+              ukuran: p.size || '-',
+              warna: p.color || '-',
+              hargaJual: parseFloat(p.sellingPrice) || parseFloat(p.selling_price) || 0,
+              hargaDiskon: parseFloat(p.discountPrice) || parseFloat(p.discount_price) || 0,
+              stok: parseInt(p.stock) || 0,
+              barcode: barcodeValue,
+              kategori: p.brand || '-',
+            };
+            
+            console.log('Transformed:', transformed);
+            console.log('Barcode:', transformed.barcode);
+            console.log('Harga Jual:', transformed.hargaJual);
+            
+            return transformed;
+          })
         };
+        
+        // 🔥 DEBUGGING: Log final transformed data
+        console.log('=== FINAL TRANSFORMED DATA ===');
+        console.log('Total Products:', transformedData.products.length);
+        console.log('First Product:', transformedData.products[0]);
         
         setInventoryData(transformedData);
         setFilteredProducts(transformedData.products);
@@ -101,7 +138,7 @@ const InventoryScreen = ({ navigation }) => {
         setFilteredProducts([]);
       }
     } catch (error) {
-      console.error('Error loading inventory:', error);
+      console.error('❌ Error loading inventory:', error);
       Alert.alert('Error', error.message || 'Gagal memuat data produk');
       setInventoryData({
         totalProduk: 0,
@@ -119,8 +156,6 @@ const InventoryScreen = ({ navigation }) => {
   // Fetch History Data
   const loadHistoryData = async () => {
     try {
-      // Note: History/stock opname functionality can be added later
-      // For now, set empty array
       setHistoryData([]);
     } catch (error) {
       console.error('Error loading history:', error);
@@ -163,28 +198,29 @@ const InventoryScreen = ({ navigation }) => {
     setShowHistoryModal(true);
   };
 
-  // PERBAIKAN: Handler untuk menampilkan QR Code
   const handleShowQR = (product) => {
-    // Validasi produk
+    // 🔥 DEBUGGING: Log product saat QR ditampilkan
+    console.log('=== SHOW QR MODAL ===');
+    console.log('Product Data:', product);
+    console.log('Barcode:', product?.barcode);
+    console.log('Harga Jual:', product?.hargaJual);
+    
     if (!product) {
       Alert.alert('Error', 'Data produk tidak valid');
       return;
     }
 
-    // Debugging log (opsional, bisa dihapus di production)
-    console.log('Product untuk QR Code:', product);
+    if (!product.barcode) {
+      Alert.alert('Error', 'Produk tidak memiliki barcode');
+      return;
+    }
 
-    // Set produk yang dipilih
     setSelectedProduct(product);
-    
-    // Tampilkan modal QR
     setShowQRModal(true);
   };
 
-  // Handler untuk menutup modal QR
   const handleCloseQR = () => {
     setShowQRModal(false);
-    // Reset selected product setelah delay kecil untuk animasi
     setTimeout(() => {
       setSelectedProduct(null);
     }, 300);
@@ -192,7 +228,6 @@ const InventoryScreen = ({ navigation }) => {
 
   const handleEditProduct = (product) => {
     Alert.alert('Info', 'Fitur Edit Produk akan segera ditambahkan');
-    // TODO: Implementasi edit produk
   };
 
   const handleDeleteProduct = (productId) => {
@@ -251,7 +286,6 @@ const InventoryScreen = ({ navigation }) => {
   };
 
   const handleSubmitProduct = async () => {
-    // Validasi
     if (!formData.namaProduk || !formData.hargaJual || !formData.stokAwal) {
       Alert.alert(
         'Validasi', 
@@ -262,11 +296,9 @@ const InventoryScreen = ({ navigation }) => {
 
     setIsSubmitting(true);
 
-    // ✅ AUTO-GENERATE BARCODE jika kosong
     let barcodeToSave = formData.barcode;
     
     if (!barcodeToSave || barcodeToSave.trim() === '') {
-      // Generate barcode otomatis
       const timestamp = Date.now();
       const random = Math.floor(1000 + Math.random() * 9000);
       barcodeToSave = `BYS${timestamp}${random}`;
@@ -274,7 +306,6 @@ const InventoryScreen = ({ navigation }) => {
       console.log('🔥 Barcode auto-generated:', barcodeToSave);
     }
 
-    // Transform data untuk API format
     const productData = {
       brand: formData.merek || '',
       model: formData.namaProduk || '',
@@ -305,7 +336,6 @@ const InventoryScreen = ({ navigation }) => {
     setIsSubmitting(false);
   };
 
-  // Loading State
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -317,7 +347,6 @@ const InventoryScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
@@ -341,12 +370,10 @@ const InventoryScreen = ({ navigation }) => {
           />
         }
       >
-        {/* Title Section */}
         <View style={styles.titleSection}>
           <Text style={styles.pageTitle}>MANAGEMENT INVENTORY</Text>
         </View>
 
-        {/* Info Cards */}
         <View style={styles.infoSection}>
           <Text style={styles.sectionTitle}>INVENTORY INFORMATION</Text>
           
@@ -371,7 +398,6 @@ const InventoryScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Action Section */}
         <View style={styles.actionSection}>
           <View style={styles.searchContainer}>
             <Octicons name="search" size={20} color="#585757" style={styles.searchIcon} />
@@ -395,7 +421,6 @@ const InventoryScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Product Table */}
         <ProductTable
           products={filteredProducts}
           onShowQR={handleShowQR}
@@ -406,7 +431,6 @@ const InventoryScreen = ({ navigation }) => {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Modals */}
       <AddProductModal
         visible={showAddProductModal}
         onClose={handleCloseAddModal}
