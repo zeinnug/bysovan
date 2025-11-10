@@ -78,11 +78,7 @@ const InventoryScreen = ({ navigation }) => {
         console.log(JSON.stringify(result.data.products[0], null, 2));
         
         // Transform data to match expected format
-        const transformedData = {
-          totalProduk: result.data.statistics?.totalProducts || 0,
-          stokMenipis: result.data.statistics?.lowStockProducts || 0,
-          totalStok: result.data.statistics?.totalStock || 0,
-          products: result.data.products.map((p, index) => {
+        const mappedProducts = result.data.products.map((p, index) => {
             // 🔥 DEBUGGING: Log transformation
             console.log(`=== TRANSFORMING PRODUCT ${index + 1} ===`);
             console.log('Original:', p);
@@ -117,14 +113,29 @@ const InventoryScreen = ({ navigation }) => {
             console.log('Harga Jual:', transformed.hargaJual);
             
             return transformed;
-          })
+          });
+
+        // Compute fallback statistics when API doesn't provide them or uses different keys
+        const totalProdukFallback = mappedProducts.length;
+        const totalStokFallback = mappedProducts.reduce((sum, prod) => sum + (parseInt(prod.stok) || 0), 0);
+        // Define low stock threshold (fallback). Prefer API value when available.
+        const LOW_STOCK_THRESHOLD = 5;
+        const stokMenipisFallback = mappedProducts.filter(prod => (parseInt(prod.stok) || 0) <= LOW_STOCK_THRESHOLD).length;
+
+        const transformedData = {
+          totalProduk: result.data.statistics?.totalProducts || result.data.statistics?.total_products || totalProdukFallback,
+          stokMenipis: result.data.statistics?.lowStockProducts || result.data.statistics?.low_stock_products || stokMenipisFallback,
+          totalStok: result.data.statistics?.totalStock || result.data.statistics?.total_stock || totalStokFallback,
+          products: mappedProducts,
         };
-        
+
         // 🔥 DEBUGGING: Log final transformed data
         console.log('=== FINAL TRANSFORMED DATA ===');
-        console.log('Total Products:', transformedData.products.length);
+        console.log('Total Products (api/stat/fallback):', transformedData.totalProduk);
+        console.log('Total Stok (api/stat/fallback):', transformedData.totalStok);
+        console.log('Stok Menipis (api/stat/fallback):', transformedData.stokMenipis);
         console.log('First Product:', transformedData.products[0]);
-        
+
         setInventoryData(transformedData);
         setFilteredProducts(transformedData.products);
       } else {

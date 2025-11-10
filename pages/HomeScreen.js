@@ -10,7 +10,9 @@ import {
   RefreshControl,
   Alert,
   Animated,
+  Image,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Octicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -134,6 +136,51 @@ const SimplePieChart = memo(({ data, title, subtitle }) => {
   const total = data.reduce((sum, item) => sum + item.quantity, 0);
   const colors = ['#FC6A0A', '#E74504', '#585757'];
 
+  const renderPieChart = () => {
+    let cumulativeAngle = -Math.PI / 2; // Start from top (-90 degrees)
+    const centerX = 80;
+    const centerY = 80;
+    const radius = 60;
+
+    return data.map((item, index) => {
+      const percentage = total > 0 ? (item.quantity / total) : 0;
+      const angle = percentage * 2 * Math.PI;
+      const startAngle = cumulativeAngle;
+      const endAngle = cumulativeAngle + angle;
+      
+      // Calculate arc points
+      const startX = centerX + radius * Math.cos(startAngle);
+      const startY = centerY + radius * Math.sin(startAngle);
+      const endX = centerX + radius * Math.cos(endAngle);
+      const endY = centerY + radius * Math.sin(endAngle);
+      
+      // Determine which arc to draw based on the percentage
+      const largeArcFlag = percentage > 0.5 ? 1 : 0;
+      
+      // Create the SVG path
+      const pathData = [
+        'M', centerX, centerY, // Move to center
+        'L', startX, startY,   // Line to start of arc
+        'A', radius, radius,   // Arc command
+        0, largeArcFlag, 1,    // Arc parameters
+        endX, endY,           // End point of arc
+        'Z'                    // Close path
+      ].join(' ');
+      
+      cumulativeAngle += angle;
+      
+      return (
+        <Path
+          key={index}
+          d={pathData}
+          fill={colors[index % colors.length]}
+          stroke="#292929"
+          strokeWidth={1}
+        />
+      );
+    });
+  };
+
   return (
     <View style={styles.chartCard}>
       <Text style={styles.chartTitle}>{title}</Text>
@@ -145,23 +192,28 @@ const SimplePieChart = memo(({ data, title, subtitle }) => {
           <Text style={styles.emptyText}>Belum ada data produk terlaris</Text>
         </View>
       ) : (
-        <View style={styles.legendContainer}>
-          {data.map((item, index) => (
-            <View key={index} style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: colors[index % colors.length] }]} />
-              <View style={styles.legendTextContainer}>
-                <Text style={styles.legendText} numberOfLines={1}>
-                  {item.name || '-'}
-                </Text>
-                <Text style={styles.legendSubtext}>
-                  {item.quantity || 0} unit
+        <View style={styles.pieChartContainer}>
+          <Svg width={160} height={160}>
+            {renderPieChart()}
+          </Svg>
+          <View style={styles.legendContainer}>
+            {data.map((item, index) => (
+              <View key={index} style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: colors[index % colors.length] }]} />
+                <View style={styles.legendTextContainer}>
+                  <Text style={styles.legendText} numberOfLines={1}>
+                    {item.name || '-'}
+                  </Text>
+                  <Text style={styles.legendSubtext}>
+                    {item.quantity || 0} unit
+                  </Text>
+                </View>
+                <Text style={styles.legendPercentage}>
+                  {total > 0 ? ((item.quantity / total) * 100).toFixed(1) : 0}%
                 </Text>
               </View>
-              <Text style={styles.legendPercentage}>
-                {total > 0 ? ((item.quantity / total) * 100).toFixed(1) : 0}%
-              </Text>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
       )}
     </View>
@@ -239,7 +291,7 @@ const HomeScreen = () => {
   const [dashboardData, setDashboardData] = useState({
     totalProduk: 0,
     pengunjungHariIni: 0,
-    totalStok: 0,
+    transaksiHariIni: 0,
     produkTerlaris: [],
     grafikPengunjung: [],
     transaksiTerbaru: []
@@ -290,11 +342,23 @@ const HomeScreen = () => {
 
       const result = data.data || data;
 
+      // Get today's date for filtering
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Filter transactions for today
+      const todaysTransactions = (result.transaksi_terbaru || result.transaksiTerbaru || result.recent_transactions || [])
+        .filter(t => {
+          const transactionDate = new Date(t.created_at || t.createdAt);
+          transactionDate.setHours(0, 0, 0, 0);
+          return transactionDate.getTime() === today.getTime();
+        });
+
       // Parse data dengan format yang fleksibel
       const parsedData = {
         totalProduk: result.total_produk || result.totalProduk || result.total_products || 0,
         pengunjungHariIni: result.pengunjung_hari_ini || result.pengunjungHariIni || result.total_transactions || 0,
-        totalStok: result.total_stok || result.totalStok || result.total_sales || 0,
+        transaksiHariIni: todaysTransactions.length,
         
         produkTerlaris: (result.produk_terlaris || result.produkTerlaris || result.top_products || []).map(item => ({
           name: item.nama || item.name || '-',
@@ -317,10 +381,9 @@ const HomeScreen = () => {
       // Cek apakah ada perubahan data
       const hasChanged = JSON.stringify(prevDataRef.current) !== JSON.stringify(parsedData);
       
-      if (hasChanged || isLoading) {
-        setDashboardData(parsedData);
-        prevDataRef.current = parsedData;
-      }
+      // Always update to get fresh transaction count
+      setDashboardData(parsedData);
+      prevDataRef.current = parsedData;
 
       setIsLoading(false);
       setRefreshing(false);
@@ -398,7 +461,11 @@ const HomeScreen = () => {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.logoContainer}>
-            <Octicons name="package" size={24} color="#FC6A0A" />
+            <Image 
+              source={require('../assets/logo.png')} 
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <View>
             <Text style={styles.headerTitle}>DASHBOARD</Text>
@@ -450,7 +517,7 @@ const HomeScreen = () => {
           <StatCard 
             title="Total Produk" 
             value={dashboardData.totalProduk} 
-            icon="📦" 
+            icon="👟" 
             delay={0} 
           />
           <StatCard 
@@ -460,11 +527,10 @@ const HomeScreen = () => {
             delay={200} 
           />
           <StatCard 
-            title="Total Penjualan" 
-            value={dashboardData.totalStok} 
+            title="Transaksi Hari Ini" 
+            value={dashboardData.transaksiHariIni || 0} 
             icon="💰" 
             delay={400}
-            isCurrency={true}
           />
         </View>
 
@@ -531,6 +597,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   headerTitle: {
     fontSize: 16,
@@ -736,6 +807,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#F5ECE4',
     fontWeight: 'bold',
+  },
+  pieChartContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
   },
   transactionSection: {
     marginTop: 8,
