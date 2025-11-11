@@ -205,7 +205,7 @@ const SimplePieChart = memo(({ data, title, subtitle }) => {
                     {item.name || '-'}
                   </Text>
                   <Text style={styles.legendSubtext}>
-                    {item.quantity || 0} unit
+                    {`${item.quantity || 0} unit`}{item.percentageHint != null ? ` • API ${parseFloat(item.percentageHint)}%` : ''}
                   </Text>
                 </View>
                 <Text style={styles.legendPercentage}>
@@ -213,6 +213,160 @@ const SimplePieChart = memo(({ data, title, subtitle }) => {
                 </Text>
               </View>
             ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+});
+
+// Modern Animated Pie Chart Component (ADDED)
+const ModernPieChart = memo(({ data, title, subtitle }) => {
+  const [animationProgress, setAnimationProgress] = useState(0);
+  const [selectedSegment, setSelectedSegment] = useState(null);
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  const total = (Array.isArray(data) ? data : []).reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const colors = ['#FC6A0A', '#FF8534', '#E74504', '#FFB366', '#D63A00'];
+
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 1200,
+      useNativeDriver: false,
+    }).start();
+
+    const listener = animatedValue.addListener(({ value }) => {
+      setAnimationProgress(value);
+    });
+
+    return () => animatedValue.removeListener(listener);
+  }, [data]);
+
+  const renderAnimatedPieChart = () => {
+    let cumulativeAngle = -Math.PI / 2;
+    const centerX = 100;
+    const centerY = 100;
+    const radius = 70;
+    const innerRadius = 40;
+
+    return (Array.isArray(data) ? data : []).map((item, index) => {
+      const quantity = item.quantity || 0;
+      const percentage = total > 0 ? (quantity / total) : 0;
+      const fullAngle = percentage * 2 * Math.PI;
+      const animatedAngle = fullAngle * animationProgress;
+
+      const startAngle = cumulativeAngle;
+      const endAngle = cumulativeAngle + animatedAngle;
+
+      // Outer arc points
+      const outerStartX = centerX + radius * Math.cos(startAngle);
+      const outerStartY = centerY + radius * Math.sin(startAngle);
+      const outerEndX = centerX + radius * Math.cos(endAngle);
+      const outerEndY = centerY + radius * Math.sin(endAngle);
+
+      // Inner arc points
+      const innerStartX = centerX + innerRadius * Math.cos(startAngle);
+      const innerStartY = centerY + innerRadius * Math.sin(startAngle);
+      const innerEndX = centerX + innerRadius * Math.cos(endAngle);
+      const innerEndY = centerY + innerRadius * Math.sin(endAngle);
+
+      const largeArcFlag = percentage > 0.5 ? 1 : 0;
+
+      // Donut path
+      const pathData = [
+        'M', outerStartX, outerStartY,
+        'A', radius, radius, 0, largeArcFlag, 1, outerEndX, outerEndY,
+        'L', innerEndX, innerEndY,
+        'A', innerRadius, innerRadius, 0, largeArcFlag, 0, innerStartX, innerStartY,
+        'Z'
+      ].join(' ');
+
+      cumulativeAngle += fullAngle;
+
+      const segmentColor = colors[index % colors.length];
+
+      return (
+        <Path
+          key={index}
+          d={pathData}
+          fill={segmentColor}
+          stroke="#292929"
+          strokeWidth={1}
+          opacity={selectedSegment === null || selectedSegment === index ? 1 : 0.45}
+        />
+      );
+    });
+  };
+
+  return (
+    <View style={styles.modernChartCard}>
+      <View style={styles.chartHeader}>
+        <View>
+          <Text style={styles.modernChartTitle}>{title}</Text>
+          <Text style={styles.modernChartSubtitle}>{subtitle}</Text>
+        </View>
+        <View style={styles.periodBadge}>
+          <Octicons name="calendar" size={14} color="#FC6A0A" />
+          <Text style={styles.periodText}>Bulan Ini</Text>
+        </View>
+      </View>
+
+      {(!Array.isArray(data) || data.length === 0) ? (
+        <View style={styles.modernEmptyState}>
+          <View style={styles.emptyIconContainer}>
+            <Octicons name="graph" size={48} color="#585757" />
+          </View>
+          <Text style={styles.emptyTitle}>Belum Ada Data</Text>
+          <Text style={styles.emptyDescription}>Data produk terlaris akan muncul di sini setelah ada transaksi bulan ini</Text>
+        </View>
+      ) : (
+        <View style={styles.modernPieContainer}>
+          <View style={styles.pieChartWrapper}>
+            <Svg width={200} height={200}>
+              {renderAnimatedPieChart()}
+            </Svg>
+
+            <View style={styles.centerTextContainer}>
+              <Text style={styles.centerValue}>{total}</Text>
+              <Text style={styles.centerLabel}>Total Unit</Text>
+            </View>
+
+            <Animated.View
+              style={[
+                styles.glowEffect,
+                {
+                  opacity: animatedValue.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, 0.25, 0],
+                  }),
+                },
+              ]}
+            />
+          </View>
+
+          <View style={styles.modernLegendContainer}>
+            {(Array.isArray(data) ? data : []).map((item, index) => {
+              const quantity = item.quantity || 0;
+              const percentage = total > 0 ? ((quantity / total) * 100).toFixed(1) : '0.0';
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.modernLegendItem, selectedSegment === index && styles.selectedLegendItem]}
+                  onPress={() => setSelectedSegment(selectedSegment === index ? null : index)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.legendLeftSection}>
+                    <View style={[styles.modernLegendColor, { backgroundColor: colors[index % colors.length] }]} />
+                    <View style={styles.legendTextSection}>
+                      <Text style={styles.modernLegendText} numberOfLines={1}>{item.name || '-'}</Text>
+                      <Text style={styles.legendSubtext}>{`${quantity} unit • ${percentage}%`}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.legendPercentageSmall}>{percentage}%</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       )}
@@ -354,21 +508,53 @@ const HomeScreen = () => {
           return transactionDate.getTime() === today.getTime();
         });
 
+      // Normalize weekly visitors data
+      const defaultWeekLabels = ['SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU', 'MINGGU'];
+      const weeklyRaw = result.grafik_pengunjung 
+        || result.grafikPengunjung 
+        || result.weekly_visitors 
+        || result.pengunjung_mingguan 
+        || result.visitors_weekly 
+        || [];
+      
+      let grafikPengunjung = [];
+      if (Array.isArray(weeklyRaw) && weeklyRaw.length > 0) {
+        if (typeof weeklyRaw[0] === 'number') {
+          grafikPengunjung = weeklyRaw.slice(0, 7).map((v, i) => ({
+            hari: defaultWeekLabels[i] || `H${i + 1}`,
+            nilai: parseInt(v) || 0
+          }));
+        } else {
+          grafikPengunjung = weeklyRaw.map((item, i) => ({
+            hari: item.hari || item.day || item.label || defaultWeekLabels[i] || `H${i + 1}`,
+            nilai: parseInt(item.nilai ?? item.value ?? item.count ?? item.visitors ?? 0) || 0
+          }));
+        }
+      }
+
       // Parse data dengan format yang fleksibel
       const parsedData = {
         totalProduk: result.total_produk || result.totalProduk || result.total_products || 0,
-        pengunjungHariIni: result.pengunjung_hari_ini || result.pengunjungHariIni || result.total_transactions || 0,
+        // Use only explicit visitor fields; do NOT fallback to total transactions
+        pengunjungHariIni: result.pengunjung_hari_ini || result.pengunjungHariIni || 0,
         transaksiHariIni: todaysTransactions.length,
         
         produkTerlaris: (result.produk_terlaris || result.produkTerlaris || result.top_products || []).map(item => ({
-          name: item.nama || item.name || '-',
-          quantity: parseInt(item.quantity || item.persentase || 0)
+          name: (item.produk && (item.produk.nama || item.produk.name))
+            || (item.product && item.product.name)
+            || item.nama_produk
+            || item.product_name
+            || item.namaProduct
+            || item.nama
+            || item.name
+            || '-',
+          // Use only unit-based fields for quantity; do not fallback to percentage
+          quantity: parseInt(item.quantity ?? item.jumlah ?? item.units ?? 0) || 0,
+          // Preserve percentage if API provides it, for legend hint
+          percentageHint: item.persentase ?? item.percentage ?? item.percent ?? null
         })),
         
-        grafikPengunjung: (result.grafik_pengunjung || result.grafikPengunjung || result.hourly_data || []).map((nilai, index) => ({
-          hari: (result.labels || [])[index] || `H${index + 1}`,
-          nilai: parseInt(nilai) || 0
-        })),
+        grafikPengunjung,
         
         transaksiTerbaru: (result.transaksi_terbaru || result.transaksiTerbaru || result.recent_transactions || []).slice(0, 5).map(t => ({
           id: t.id || '-',
@@ -536,7 +722,7 @@ const HomeScreen = () => {
 
         {/* Charts */}
         <View style={styles.mainGrid}>
-          <SimplePieChart 
+          <ModernPieChart 
             data={dashboardData.produkTerlaris}
             title="Produk Terlaris"
             subtitle="Distribusi unit per produk"
@@ -776,41 +962,211 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  legendContainer: {
-    marginTop: 8,
+  // Modern Pie Chart Styles
+  modernChartCard: {
+    backgroundColor: '#292929',
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 106, 10, 0.2)',
+    shadowColor: '#FC6A0A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  legendItem: {
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  modernChartTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#F5ECE4',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  modernChartSubtitle: {
+    fontSize: 13,
+    color: '#585757',
+  },
+  periodBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    backgroundColor: 'rgba(252, 106, 10, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 106, 10, 0.3)',
   },
-  legendColor: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    marginRight: 12,
+  periodText: {
+    fontSize: 11,
+    color: '#FC6A0A',
+    fontWeight: '600',
+    marginLeft: 6,
   },
-  legendTextContainer: {
-    flex: 1,
+  modernPieContainer: {
+    flexDirection: 'column',
+    alignItems: 'center',
   },
-  legendText: {
-    fontSize: 14,
+  pieChartWrapper: {
+    position: 'relative',
+    marginBottom: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centerTextContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centerValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
     color: '#F5ECE4',
-    fontWeight: '500',
   },
-  legendSubtext: {
+  centerLabel: {
     fontSize: 12,
     color: '#585757',
     marginTop: 2,
   },
-  legendPercentage: {
-    fontSize: 16,
+  glowEffect: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#FC6A0A',
+  },
+  modernLegendContainer: {
+    width: '100%',
+  },
+  modernLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(245, 236, 228, 0.05)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 236, 228, 0.1)',
+  },
+  selectedLegendItem: {
+    backgroundColor: 'rgba(252, 106, 10, 0.1)',
+    borderColor: 'rgba(252, 106, 10, 0.3)',
+  },
+  legendLeftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  modernLegendColor: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  legendTextSection: {
+    flex: 1,
+  },
+  legendTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  modernLegendText: {
+    fontSize: 14,
     color: '#F5ECE4',
+    fontWeight: '600',
+    flex: 1,
+  },
+  topBadge: {
+    backgroundColor: '#FC6A0A',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  topBadgeText: {
+    fontSize: 9,
+    color: '#FFF',
     fontWeight: 'bold',
   },
-  pieChartContainer: {
+  quantityRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 20,
+  },
+  modernLegendSubtext: {
+    fontSize: 12,
+    color: '#585757',
+    marginLeft: 4,
+  },
+  percentageSection: {
+    alignItems: 'flex-end',
+    minWidth: 70,
+  },
+  modernLegendPercentage: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  legendPercentageSmall: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  legendPercentage: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  modernEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(88, 87, 87, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#F5ECE4',
+    marginBottom: 8,
+  },
+  emptyDescription: {
+    fontSize: 13,
+    color: '#585757',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#585757',
   },
   transactionSection: {
     marginTop: 8,
@@ -861,15 +1217,6 @@ const styles = StyleSheet.create({
   tableCell: {
     fontSize: 13,
     color: '#292929',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#585757',
   },
   emptyTableRow: {
     paddingVertical: 40,
