@@ -15,6 +15,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { Octicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
@@ -375,7 +376,7 @@ const ModernPieChart = memo(({ data, title, subtitle }) => {
 });
 
 // Transaction Table Component
-const TransactionTable = memo(({ transactions }) => {
+const TransactionTable = memo(({ transactions, navigation }) => {
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
@@ -403,7 +404,7 @@ const TransactionTable = memo(({ transactions }) => {
     <View style={styles.transactionSection}>
       <View style={styles.transactionHeader}>
         <Text style={styles.transactionTitle}>Detail Transaksi</Text>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation?.navigate('Transaksi')}>
           <Text style={styles.viewAllButton}>Lihat Semua</Text>
         </TouchableOpacity>
       </View>
@@ -454,6 +455,7 @@ const HomeScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const prevDataRef = useRef(null);
+  const navigation = useNavigation();
 
   // Update current time every minute
   useEffect(() => {
@@ -737,7 +739,7 @@ const HomeScreen = () => {
         </View>
 
         {/* Transactions */}
-        <TransactionTable transactions={dashboardData.transaksiTerbaru} />
+        <TransactionTable transactions={dashboardData.transaksiTerbaru} navigation={navigation} />
 
         <View style={{ height: 100 }} />
       </ScrollView>

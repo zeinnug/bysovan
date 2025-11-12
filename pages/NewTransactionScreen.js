@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createTransaction } from '../keduitan/transactions';
+import QRCodeScanner from '../keduitan/qrscan'; // <-- added QR scanner component
 
 const BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
 
@@ -34,6 +35,7 @@ export default function NewTransactionScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false); // <-- scanner visibility state
 
   // Customer Data
   const [customerData, setCustomerData] = useState({
@@ -220,11 +222,22 @@ export default function NewTransactionScreen({ navigation }) {
   };
 
   const openScanner = () => {
-    Alert.alert(
-      'Scanner QR',
-      'Fitur scanner QR akan segera tersedia. Untuk sementara, gunakan pencarian produk manual.',
-      [{ text: 'OK' }]
-    );
+    setShowScanner(true);
+  };
+
+  const handleScanSuccess = (product) => {
+    setShowScanner(false);
+    if (product) {
+      addToCart(product);
+      Alert.alert('Berhasil', `${product.name} ditambahkan dari hasil scan`);
+    } else {
+      Alert.alert('Info', 'Hasil scan tidak cocok dengan produk yang tersedia');
+    }
+  };
+
+  const handleScanError = (title = 'Error', message = 'Gagal melakukan scan') => {
+    setShowScanner(false);
+    Alert.alert(title, message);
   };
 
   const formatCurrency = (amount) => {
@@ -498,6 +511,18 @@ export default function NewTransactionScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      {/* QR Code Scanner modal/component */}
+      <QRCodeScanner
+        visible={showScanner}
+        availableProducts={products}
+        onClose={() => setShowScanner(false)}
+        onScanSuccess={handleScanSuccess}
+        onScanError={handleScanError}
+        onRequestRefresh={loadProducts}
+      />
+
+      <View style={{ height: 0 }} />
     </View>
   );
 }
