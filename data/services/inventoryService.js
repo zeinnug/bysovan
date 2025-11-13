@@ -34,6 +34,72 @@ export const getProducts = async (params = {}) => {
 };
 
 /**
+ * Get inventory statistics
+ * @returns {Promise<Object>} Inventory statistics
+ */
+export const getInventoryStatistics = async () => {
+  try {
+    // Jika API memiliki endpoint khusus untuk statistics
+    // Uncomment baris ini dan sesuaikan endpoint-nya
+    // const response = await apiClient.get(API_ENDPOINTS.INVENTORY_STATISTICS);
+    // return formatResponse(response);
+
+    // FALLBACK: Hitung dari data products
+    const response = await apiClient.get(API_ENDPOINTS.PRODUCTS, {
+      params: {
+        page: 1,
+        per_page: 9999, // Get all products untuk kalkulasi
+        no_cache: true,
+      },
+    });
+
+    const result = formatResponse(response);
+    
+    if (result.success && result.data.products) {
+      const products = result.data.products;
+      const LOW_STOCK_THRESHOLD = 5;
+
+      // Hitung statistics
+      const totalProducts = products.length;
+      
+      // Total stock dari semua units
+      const totalStock = products.reduce((sum, product) => {
+        if (product.units && Array.isArray(product.units)) {
+          return sum + product.units.reduce((unitSum, unit) => {
+            return unitSum + (parseInt(unit.stock) || 0);
+          }, 0);
+        }
+        return sum + (parseInt(product.stock) || 0);
+      }, 0);
+
+      // Low stock products
+      const lowStockProducts = products.filter(product => {
+        if (product.units && Array.isArray(product.units)) {
+          // Cek apakah ada unit yang low stock
+          return product.units.some(unit => (parseInt(unit.stock) || 0) <= LOW_STOCK_THRESHOLD);
+        }
+        return (parseInt(product.stock) || 0) <= LOW_STOCK_THRESHOLD;
+      }).length;
+
+      return {
+        success: true,
+        data: {
+          totalProducts,
+          totalStock,
+          lowStockProducts,
+          lowStockThreshold: LOW_STOCK_THRESHOLD,
+        },
+      };
+    }
+
+    throw new Error('Failed to calculate statistics');
+  } catch (error) {
+    console.error('[InventoryService] Get inventory statistics error:', error);
+    throw formatError(error);
+  }
+};
+
+/**
  * Get product by ID
  * @param {number} id - Product ID
  * @returns {Promise<Object>} Product detail
@@ -214,6 +280,7 @@ export const deleteAllStockOpnameReports = async () => {
 
 export default {
   getProducts,
+  getInventoryStatistics,
   getProductById,
   createProduct,
   updateProduct,

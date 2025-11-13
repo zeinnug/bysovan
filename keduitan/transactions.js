@@ -91,12 +91,15 @@ export const getTransactionById = async (id) => {
 };
 
 /**
- * Filter transactions by date range and/or keyword
+ * Filter transactions by date, payment method, and status
+ * Compatible with TransactionScreen.js usage
  * @param {Object} params - Filter parameters
- * @param {string} params.startDate - Start date (YYYY-MM-DD)
- * @param {string} params.endDate - End date (YYYY-MM-DD)
+ * @param {string} params.date - Date (YYYY-MM-DD)
+ * @param {string} params.payment_method - Payment method (cash, qris, transfer, debit)
+ * @param {string} params.status - Transaction status (paid, unpaid)
+ * @param {string} params.startDate - Start date (YYYY-MM-DD) - alternative
+ * @param {string} params.endDate - End date (YYYY-MM-DD) - alternative
  * @param {string} params.keyword - Search keyword
- * @param {string} params.status - Transaction status
  * @returns {Promise} Filtered transactions
  */
 export const filterTransactions = async (params) => {
@@ -104,13 +107,32 @@ export const filterTransactions = async (params) => {
     const config = await getAxiosConfig();
     const queryParams = new URLSearchParams();
     
-    if (params.startDate) queryParams.append('start_date', params.startDate);
-    if (params.endDate) queryParams.append('end_date', params.endDate);
-    if (params.keyword) queryParams.append('keyword', params.keyword);
-    if (params.status) queryParams.append('status', params.status);
+    // Support both 'date' and 'startDate/endDate' formats
+    if (params.date) {
+      queryParams.append('date', params.date);
+    }
+    if (params.startDate) {
+      queryParams.append('start_date', params.startDate);
+    }
+    if (params.endDate) {
+      queryParams.append('end_date', params.endDate);
+    }
+    if (params.payment_method) {
+      queryParams.append('payment_method', params.payment_method);
+    }
+    if (params.status) {
+      queryParams.append('status', params.status);
+    }
+    if (params.keyword) {
+      queryParams.append('keyword', params.keyword);
+    }
     
     const url = `${BASE_URL}/transactions?${queryParams.toString()}`;
+    console.log('Filter URL:', url);
+    
     const response = await axios.get(url, config);
+    
+    console.log('Filter response:', response.data);
     
     return {
       success: true,
@@ -121,6 +143,7 @@ export const filterTransactions = async (params) => {
     return {
       success: false,
       error: error.response?.data?.message || 'Failed to filter transactions',
+      data: [],
     };
   }
 };
@@ -195,6 +218,29 @@ export const getTransactionStats = async (params = {}) => {
     return {
       success: false,
       error: error.response?.data?.message || 'Failed to fetch statistics',
+    };
+  }
+};
+
+/**
+ * Add product by scanning QR code
+ * @param {string} unitCode - Unit code from QR
+ * @returns {Promise<Object>} Product data
+ */
+export const addProductByQR = async (unitCode) => {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${BASE_URL}/products/qr/${unitCode}`, config);
+    
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('Error scanning QR:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Product not found',
     };
   }
 };
