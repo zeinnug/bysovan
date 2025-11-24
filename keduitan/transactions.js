@@ -1,5 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useState } from 'react';
+import { SafeAreaView, TouchableOpacity, Text } from 'react-native';
+import QRScan from './qrscan';
 
 const BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
 
@@ -243,4 +246,64 @@ export const addProductByQR = async (unitCode) => {
       error: error.response?.data?.message || 'Product not found',
     };
   }
+};
+
+// ===================================================================
+// QR Scanner UI wrapper component
+// - safe to import and use inside screens that need QR scanning UI
+// - keeps transactions API helpers separate from UI logic
+// ===================================================================
+export const QRScannerWrapper = ({
+  availableUnits = [],
+  cart = [],
+  darkMode = false,
+  onAddToCart = () => {},
+  fetchUnits = async () => {},
+  showButton = true,
+  buttonStyle,
+  buttonTextStyle,
+}) => {
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [hasScanned, setHasScanned] = useState(false);
+
+  return (
+    <SafeAreaView>
+      {showButton && (
+        <TouchableOpacity
+          style={buttonStyle}
+          onPress={() => {
+            setShowQRScanner(true);
+            setHasScanned(false);
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={buttonTextStyle}>📷 Scan QR Code</Text>
+        </TouchableOpacity>
+      )}
+
+      <QRScan
+        visible={showQRScanner}
+        availableUnits={availableUnits}
+        cart={cart}
+        darkMode={darkMode}
+        onClose={() => {
+          setShowQRScanner(false);
+          setHasScanned(false);
+        }}
+        onScanSuccess={(newCartItem, unit) => {
+          // bubble up to parent screen
+          onAddToCart(newCartItem, unit);
+          setShowQRScanner(false);
+          setHasScanned(false);
+        }}
+        onScanError={(title, message) => {
+          // parent screen may choose to show a popup
+          console.warn('QRScan error:', title, message);
+          setShowQRScanner(false);
+          setHasScanned(false);
+        }}
+        onRequestRefresh={fetchUnits}
+      />
+    </SafeAreaView>
+  );
 };

@@ -278,6 +278,49 @@ export const deleteAllStockOpnameReports = async () => {
   }
 };
 
+/**
+ * Add product by QR code scan (untuk transaction)
+ * @param {string} unitCode - Unit code dari QR scan
+ * @returns {Promise<Object>} Product detail untuk cart
+ */
+export const addProductByQR = async (unitCode) => {
+  try {
+    if (!unitCode || unitCode.trim() === '') {
+      throw new Error('Unit code tidak boleh kosong');
+    }
+
+    const response = await apiClient.get(API_ENDPOINTS.ADD_PRODUCT_BY_QR(unitCode));
+    return formatResponse(response);
+  } catch (error) {
+    console.error('[InventoryService] Add product by QR error:', error);
+    throw formatError(error);
+  }
+};
+
+/**
+ * Search product by code (fallback untuk QR scan)
+ * @param {string} code - Product code / unit code
+ * @returns {Promise<Object>} Product data
+ */
+export const searchProductByCode = async (code) => {
+  try {
+    if (!code || code.trim() === '') {
+      throw new Error('Kode produk tidak boleh kosong');
+    }
+
+    const response = await apiClient.get(API_ENDPOINTS.PRODUCTS, {
+      params: {
+        search: code,
+        per_page: 100,
+      },
+    });
+    return formatResponse(response);
+  } catch (error) {
+    console.error('[InventoryService] Search product by code error:', error);
+    throw formatError(error);
+  }
+};
+
 export default {
   getProducts,
   getInventoryStatistics,
@@ -291,4 +334,6 @@ export default {
   saveStockOpnameReport,
   deleteStockOpnameReport,
   deleteAllStockOpnameReports,
+  addProductByQR,
+  searchProductByCode,
 };

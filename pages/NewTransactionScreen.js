@@ -35,7 +35,10 @@ export default function NewTransactionScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showScanner, setShowScanner] = useState(false); // <-- scanner visibility state
+  const [showScanner, setShowScanner] = useState(false);
+  const [isProductsLoaded, setIsProductsLoaded] = useState(false); // ← ADD THIS
+  const [currentPage, setCurrentPage] = useState(1); // Pagination state
+  const itemsPerPage = 5; // 5 cards per page
 
   // Customer Data
   const [customerData, setCustomerData] = useState({
@@ -53,8 +56,18 @@ export default function NewTransactionScreen({ navigation }) {
     loadProducts();
   }, []);
 
+  // Filter products when search query or products change
   useEffect(() => {
-    filterProducts();
+    if (!searchQuery.trim()) {
+      setFilteredProducts(products);
+      return;
+    }
+
+    const filtered = products.filter((product) =>
+      product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.code?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredProducts(filtered);
   }, [searchQuery, products]);
 
   const getAuthToken = async () => {
@@ -79,15 +92,51 @@ export default function NewTransactionScreen({ navigation }) {
 
   const loadProducts = async () => {
     setLoading(true);
+    setIsProductsLoaded(false);
     try {
       const config = await getAxiosConfig();
       const response = await axios.get(`${BASE_URL}/products`, config);
-      const productData = response.data.products || response.data || [];
+      
+      // ✅ FIX: Pastikan productData adalah array
+      let productData = [];
+      
+      if (response.data.products && Array.isArray(response.data.products)) {
+        productData = response.data.products;
+      } else if (response.data.data && Array.isArray(response.data.data.products)) {
+        productData = response.data.data.products;
+      } else if (Array.isArray(response.data)) {
+        productData = response.data;
+      } else {
+        console.warn('Unexpected response format:', response.data);
+        productData = [];
+      }
+      
+      // ✅ DETAILED DEBUG LOGGING
+      console.log('=== PRODUCTS DEBUG ===');
+      console.log('Type:', typeof productData);
+      console.log('Is Array:', Array.isArray(productData));
+      console.log('Length:', productData.length);
+      if (productData.length > 0) {
+        console.log('Sample product:', productData[0]);
+        console.log('Sample product keys:', Object.keys(productData[0]));
+        console.log('Sample product.price:', productData[0].price);
+        console.log('Sample product.code:', productData[0].code);
+        console.log('Sample product.id:', productData[0].id);
+      }
+      console.log('=== END DEBUG ===');
+      
+      console.log('✓ Products loaded:', productData.length);
+      
       setProducts(productData);
       setFilteredProducts(productData);
+      setIsProductsLoaded(true);
     } catch (error) {
       console.error('Error loading products:', error);
+      console.error('Error response:', error.response?.data);
       Alert.alert('Error', 'Gagal memuat data produk');
+      setProducts([]); // ← SET EMPTY ARRAY ON ERROR
+      setFilteredProducts([]);
+      setIsProductsLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -104,6 +153,30 @@ export default function NewTransactionScreen({ navigation }) {
       product.code?.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredProducts(filtered);
+  };
+
+  // Reset to page 1 when filtered products change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filteredProducts]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // Pagination handlers
+  const handlePrevious = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
   };
 
   const addToCart = (product) => {
@@ -222,14 +295,56 @@ export default function NewTransactionScreen({ navigation }) {
   };
 
   const openScanner = () => {
+    // Check if products already loaded
+    if (!isProductsLoaded) {
+      Alert.alert(
+        'Tunggu',
+        'Data produk sedang dimuat. Silakan coba lagi dalam beberapa detik.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    // Check if products list is empty
+    if (products.length === 0) {
+      Alert.alert(
+        'Tidak Ada Data',
+        'Tidak ada produk yang tersedia untuk di-scan. Tambahkan produk terlebih dahulu.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
     setShowScanner(true);
   };
 
-  const handleScanSuccess = (product) => {
-    setShowScanner(false);
-    if (product) {
-      addToCart(product);
-      Alert.alert('Berhasil', `${product.name} ditambahkan dari hasil scan`);
+  const handleScanSuccess = (cartItem) => {
+    // Scanner akan menutup otomatis setelah scan (dipanggil di qrscan.js)
+    // Tidak perlu setShowScanner(false) di sini
+    
+    if (cartItem && cartItem.id) {
+      // Data dari scanner sudah dalam format cart item
+      // Cek apakah item sudah ada di cart
+      const existingItem = cart.find((item) => item.id === cartItem.id);
+
+      if (existingItem) {
+        // Jika sudah ada, tambahkan quantity
+        setCart(
+          cart.map((item) =>
+            item.id === cartItem.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          )
+        );
+      } else {
+        // Jika belum ada, tambahkan item baru
+        setCart([...cart, cartItem]);
+      }
+
+      // Alert akan muncul setelah scanner menutup
+      setTimeout(() => {
+        Alert.alert('Berhasil', `${cartItem.name} ditambahkan ke keranjang dari hasil scan`);
+      }, 300);
     } else {
       Alert.alert('Info', 'Hasil scan tidak cocok dengan produk yang tersedia');
     }
@@ -305,18 +420,14 @@ export default function NewTransactionScreen({ navigation }) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="close" size={28} color={COLORS.pumpkin} />
-          </View>
-          <Text style={styles.headerTitle}>Buat Transaksi Baru</Text>
-        </View>
-        <TouchableOpacity
+        <TouchableOpacity 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>Kembali ke Dashboard</Text>
+          <Ionicons name="arrow-back" size={24} color={COLORS.linen} />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Buat Transaksi Baru</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.content}>
@@ -327,8 +438,14 @@ export default function NewTransactionScreen({ navigation }) {
           </View>
           <View style={styles.scannerCard}>
             <Ionicons name="camera" size={64} color={COLORS.pumpkin} />
-            <TouchableOpacity style={styles.scanButton} onPress={openScanner}>
-              <Text style={styles.scanButtonText}>Buka Scanner</Text>
+            <TouchableOpacity 
+              style={styles.scanButton} 
+              onPress={openScanner}
+              disabled={loading || !isProductsLoaded} // ← ADD DISABLED STATE
+            >
+              <Text style={styles.scanButtonText}>
+                {loading || !isProductsLoaded ? 'Memuat Produk...' : 'Buka Scanner'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -348,15 +465,76 @@ export default function NewTransactionScreen({ navigation }) {
           {loading ? (
             <ActivityIndicator size="large" color={COLORS.pumpkin} />
           ) : (
-            <FlatList
-              data={filteredProducts}
-              renderItem={renderProductItem}
-              keyExtractor={(item) => item.id?.toString()}
-              scrollEnabled={false}
-              ListEmptyComponent={
-                <Text style={styles.emptyText}>Tidak ada produk ditemukan</Text>
-              }
-            />
+            <>
+              <FlatList
+                data={currentProducts}
+                renderItem={renderProductItem}
+                keyExtractor={(item) => item.id?.toString()}
+                scrollEnabled={false}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>Tidak ada produk ditemukan</Text>
+                }
+              />
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <View style={styles.paginationContainer}>
+                  <View style={styles.paginationControls}>
+                    <TouchableOpacity
+                      style={[
+                        styles.paginationButton,
+                        currentPage === 1 && styles.paginationButtonDisabled
+                      ]}
+                      onPress={handlePrevious}
+                      disabled={currentPage === 1}
+                    >
+                      <Ionicons 
+                        name="chevron-back" 
+                        size={20} 
+                        color={currentPage === 1 ? COLORS.davysGray : COLORS.white} 
+                      />
+                      <Text 
+                        style={[
+                          styles.paginationButtonText,
+                          currentPage === 1 && styles.paginationButtonTextDisabled
+                        ]}
+                      >
+                        Previous
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.pageNumberContainer}>
+                      <Text style={styles.pageNumber}>{currentPage}</Text>
+                      <Text style={styles.pageNumberSeparator}>/</Text>
+                      <Text style={styles.pageNumberTotal}>{totalPages}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.paginationButton,
+                        currentPage === totalPages && styles.paginationButtonDisabled
+                      ]}
+                      onPress={handleNext}
+                      disabled={currentPage === totalPages}
+                    >
+                      <Text 
+                        style={[
+                          styles.paginationButtonText,
+                          currentPage === totalPages && styles.paginationButtonTextDisabled
+                        ]}
+                      >
+                        Next
+                      </Text>
+                      <Ionicons 
+                        name="chevron-forward" 
+                        size={20} 
+                        color={currentPage === totalPages ? COLORS.davysGray : COLORS.white} 
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -541,34 +719,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 15,
-  },
-  logoContainer: {
-    width: 50,
-    height: 50,
-    backgroundColor: COLORS.pumpkin,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.white,
+    letterSpacing: 1,
   },
   backButton: {
-    backgroundColor: COLORS.goldenGate,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
@@ -852,5 +1013,67 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Pagination Styles
+  paginationContainer: {
+    backgroundColor: COLORS.jet,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paginationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  paginationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.pumpkin,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  paginationButtonDisabled: {
+    backgroundColor: COLORS.davysGray,
+    opacity: 0.5,
+  },
+  paginationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  paginationButtonTextDisabled: {
+    color: COLORS.davysGray,
+  },
+  pageNumberContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.linen,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 80,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  pageNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.jet,
+  },
+  pageNumberSeparator: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.davysGray,
+  },
+  pageNumberTotal: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.davysGray,
   },
 });
