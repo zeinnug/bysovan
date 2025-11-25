@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useReducer } from 'react';
+// pages/NewTransactionScreen.js - Main Screen dengan UI Components (UPDATED - No Discount %)
+import React from 'react';
 import {
   View,
   Text,
@@ -6,346 +7,54 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Alert,
   FlatList,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { createTransaction } from '../keduitan/transactions';
 import QRCodeScanner from '../keduitan/qrscan';
 import { COLORS, cardShadow, formatCurrency } from '../utils/styleHelpers';
-import { getProducts, updateProduct } from '../data/services/inventoryService';
-
-const customerReducer = (state, action) => {
-  if (action.type === 'UPDATE_FIELD') {
-    return { ...state, [action.field]: action.value };
-  }
-  if (action.type === 'RESET') {
-    return { customer_name: '', phone_number: '', payment_method: 'cash', notes: '' };
-  }
-  return state;
-};
+import { useTransactionLogic } from '../keduitan/sold';
 
 export default function NewTransactionScreen({ navigation }) {
-  const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [cart, setCart] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
-  const [isProductsLoaded, setIsProductsLoaded] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [discount, setDiscount] = useState(0);
-  const [newPrice, setNewPrice] = useState('');
-  const [customerData, dispatchCustomer] = useReducer(customerReducer, {
-    customer_name: '',
-    phone_number: '',
-    payment_method: 'cash',
-    notes: '',
-  });
-  
-  const itemsPerPage = 5;
-
-  useEffect(() => {
-    const filtered = !searchQuery.trim() ? products : products.filter((p) =>
-      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.code?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setFilteredProducts(filtered);
-    setCurrentPage(1);
-  }, [searchQuery, products]);
-
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      setIsProductsLoaded(false);
-      
-      // Gunakan getProducts dari service (sama seperti InventoryScreen)
-      const result = await getProducts({ perPage: 1000 });
-      
-      if (result.success && result.data?.products) {
-        // Map produk dengan field harga yang sesuai dan generate kode jika kosong
-        const mappedProducts = result.data.products.map((p) => {
-          // Generate unit code sesuai dengan logika InventoryScreen
-          let unitCode = '';
-          if (p.units && p.units.length > 0 && p.units[0].unitCode) {
-            unitCode = p.units[0].unitCode;
-          } else if (p.barcode) {
-            unitCode = p.barcode;
-          } else if (p.code) {
-            unitCode = p.code;
-          } else {
-            // Fallback: generate dari ID
-            unitCode = `BYS${p.id}${Date.now().toString().slice(-6)}`;
-          }
-
-          return {
-            id: p.id,
-            product_id: p.id,
-            name: p.name || p.model || '',
-            code: unitCode, // Gunakan generated unit code
-            // Gunakan selling_price atau sellingPrice (sesuai dengan API)
-            price: parseFloat(p.selling_price || p.sellingPrice || p.price || 0),
-            color: p.color || '',
-            size: p.size || '',
-            production_code: p.production_code || p.code || '',
-            stock: parseInt(p.stock) || 0,
-          };
-        });
-        
-        console.log('✓ Products loaded:', mappedProducts.length);
-        console.log('Sample product:', mappedProducts[0]);
-        
-        setProducts(mappedProducts);
-        setFilteredProducts(mappedProducts);
-      } else {
-        console.warn('No products found or invalid response format');
-        Alert.alert('Warning', 'Tidak ada data produk yang tersedia');
-        setProducts([]);
-        setFilteredProducts([]);
-      }
-    } catch (error) {
-      console.error('Error loading products:', error);
-      Alert.alert('Error', 'Gagal memuat data produk. Periksa koneksi internet.');
-      setProducts([]);
-      setFilteredProducts([]);
-    } finally {
-      setLoading(false);
-      setIsProductsLoaded(true);
-    }
-  };
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
-  const handlePrevious = () => currentPage > 1 && setCurrentPage(currentPage - 1);
-  const handleNext = () => currentPage < totalPages && setCurrentPage(currentPage + 1);
-
-  const addToCart = (product) => {
-    if (!product) {
-      Alert.alert('Error', 'Produk tidak valid');
-      return;
-    }
-
-    const price = parseFloat(product.price) || 0;
-    const existingItem = cart.find((item) => item.id === product.id);
-
-    if (existingItem) {
-      setCart(
-        cart.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
-      );
-    } else {
-      setCart([
-        ...cart,
-        {
-          id: product.id,
-          product_id: product.id,
-          name: product.name,
-          code: product.code,
-          price: price,
-          quantity: 1,
-        },
-      ]);
-    }
-
-    console.log('Added to cart:', { id: product.id, name: product.name, price: price });
-    Alert.alert('Berhasil', `${product.name} ditambahkan ke keranjang`);
-  };
-
-  const removeFromCart = (productId) => {
-    setCart(cart.filter((item) => item.id !== productId));
-  };
-
-  const updateQuantity = (productId, newQuantity) => {
-    if (newQuantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
-
-    setCart(
-      cart.map((item) =>
-        item.id === productId ? { ...item, quantity: newQuantity } : item
-      )
-    );
-  };
-
-  const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => {
-      const price = parseFloat(item.price) || 0;
-      const quantity = parseInt(item.quantity) || 1;
-      return sum + (price * quantity);
-    }, 0);
-  };
-
-  const calculateTotal = () => {
-    const subtotal = calculateSubtotal();
-    if (newPrice && parseFloat(newPrice) > 0) {
-      return parseFloat(newPrice);
-    }
-    const discountAmount = (subtotal * (parseFloat(discount) || 0)) / 100;
-    return Math.max(0, subtotal - discountAmount);
-  };
-
-  const handleCheckout = async () => {
-    if (cart.length === 0) {
-      Alert.alert('Error', 'Keranjang masih kosong');
-      return;
-    }
-
-    if (!customerData.customer_name || !customerData.customer_name.trim()) {
-      Alert.alert('Error', 'Nama pelanggan harus diisi');
-      return;
-    }
-
-    // Validasi payment method
-    if (!customerData.payment_method) {
-      Alert.alert('Error', 'Pilih metode pembayaran');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const subtotal = calculateSubtotal();
-      const discountPercentage = parseFloat(discount) || 0;
-      const discountAmountValue = (subtotal * discountPercentage) / 100;
-      const finalTotal = newPrice ? parseFloat(newPrice) : Math.max(0, subtotal - discountAmountValue);
-
-      // Validasi unit code - harus ada kode produk yang valid
-      const invalidProducts = cart.filter(item => !item.code || item.code.trim() === '');
-      if (invalidProducts.length > 0) {
-        Alert.alert('Error', 'Beberapa produk tidak memiliki kode. Silakan refresh data produk.');
-        setLoading(false);
-        return;
-      }
-
-      // Format data sesuai dengan API requirement di transactionService
-      const transactionData = {
-        customerName: customerData.customer_name.trim(),
-        customerPhone: customerData.phone_number?.trim() || null,
-        customerEmail: null,
-        paymentMethod: customerData.payment_method.trim(),
-        cardType: null,
-        discountAmount: Math.max(0, discountAmountValue), // Ensure >= 0
-        products: cart.map((item) => ({
-          unitCode: item.code.trim(),
-          quantity: parseInt(item.quantity) || 1,
-          discountPrice: null,
-        })),
-        notes: customerData.notes?.trim() || null,
-      };
-
-      console.log('Transaction data:', JSON.stringify(transactionData, null, 2));
-
-      const result = await createTransaction(transactionData);
-
-      if (result.success) {
-        // Update stok di inventory untuk setiap produk
-        try {
-          for (const item of cart) {
-            const product = products.find(p => p.id === item.product_id || p.id === item.id);
-            if (product) {
-              const newStock = Math.max(0, (product.stock || 0) - (parseInt(item.quantity) || 1));
-              console.log(`Updating product ${product.id} stock from ${product.stock} to ${newStock}`);
-              
-              // Update stock di inventory
-              await updateProduct(product.id, {
-                ...product,
-                stock: newStock,
-              });
-            }
-          }
-        } catch (stockError) {
-          console.error('Warning: Failed to update inventory stock:', stockError);
-          // Jangan gagal transaksi karena error update stok
-        }
-
-        Alert.alert('Sukses', 'Transaksi berhasil dibuat', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
-        setCart([]);
-        dispatchCustomer({ type: 'RESET' });
-        setDiscount(0);
-        setNewPrice('');
-      } else {
-        Alert.alert('Error', result.error || 'Gagal membuat transaksi');
-      }
-    } catch (error) {
-      console.error('Error creating transaction:', error);
-      Alert.alert('Error', error.message || 'Gagal membuat transaksi');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openScanner = () => {
-    // Check if products already loaded
-    if (!isProductsLoaded) {
-      Alert.alert(
-        'Tunggu',
-        'Data produk sedang dimuat. Silakan coba lagi dalam beberapa detik.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+  const {
+    // State
+    products,
+    currentProducts,
+    searchQuery,
+    setSearchQuery,
+    cart,
+    loading,
+    showScanner,
+    setShowScanner,
+    isProductsLoaded,
+    currentPage,
+    totalPages,
+    newPrice,
+    setNewPrice,
+    customerData,
+    dispatchCustomer,
     
-    // Check if products list is empty
-    if (products.length === 0) {
-      Alert.alert(
-        'Tidak Ada Data',
-        'Tidak ada produk yang tersedia untuk di-scan. Tambahkan produk terlebih dahulu.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-    
-    setShowScanner(true);
+    // Functions
+    loadProducts,
+    handlePrevious,
+    handleNext,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    calculateSubtotal,
+    calculateDiscountAmount,
+    calculateTotal,
+    handleCheckout,
+    openScanner,
+    handleScanSuccess,
+    handleScanError,
+  } = useTransactionLogic(navigation);
+
+  const handleUpdateCustomerField = (field, value) => {
+    dispatchCustomer({ type: 'UPDATE_FIELD', field, value });
   };
 
-  const handleScanSuccess = (cartItem) => {
-    // Scanner akan menutup otomatis setelah scan (dipanggil di qrscan.js)
-    // Tidak perlu setShowScanner(false) di sini
-    
-    if (cartItem && cartItem.id) {
-      // Data dari scanner sudah dalam format cart item
-      // Cek apakah item sudah ada di cart
-      const existingItem = cart.find((item) => item.id === cartItem.id);
-
-      if (existingItem) {
-        // Jika sudah ada, tambahkan quantity
-        setCart(
-          cart.map((item) =>
-            item.id === cartItem.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
-          )
-        );
-      } else {
-        // Jika belum ada, tambahkan item baru
-        setCart([...cart, cartItem]);
-      }
-
-      // Alert akan muncul setelah scanner menutup
-      setTimeout(() => {
-        Alert.alert('Berhasil', `${cartItem.name} ditambahkan ke keranjang dari hasil scan`);
-      }, 300);
-    } else {
-      Alert.alert('Info', 'Hasil scan tidak cocok dengan produk yang tersedia');
-    }
-  };
-
-  const handleScanError = (title = 'Error', message = 'Gagal melakukan scan') => {
-    setShowScanner(false);
-    Alert.alert(title, message);
-  };
+  // ========== UI COMPONENTS ==========
 
   const renderProductItem = ({ item }) => {
     const price = parseFloat(item.price) || 0;
@@ -355,7 +64,9 @@ export default function NewTransactionScreen({ navigation }) {
           <Text style={styles.productName}>
             {item.name} ({item.code})
           </Text>
-          <Text style={styles.productPrice}>{price > 0 ? formatCurrency(price) : 'Rp 0'}</Text>
+          <Text style={styles.productPrice}>
+            {price > 0 ? formatCurrency(price) : 'Rp 0'}
+          </Text>
           <Text style={styles.productDetails}>
             {item.color && `${item.color}, `}
             {item.size && `Ukuran ${item.size}, `}
@@ -379,7 +90,9 @@ export default function NewTransactionScreen({ navigation }) {
       <View style={styles.cartItem}>
         <View style={styles.cartItemInfo}>
           <Text style={styles.cartItemName}>{item.name}</Text>
-          <Text style={styles.cartItemPrice}>{price > 0 ? formatCurrency(price) : 'Rp 0'}</Text>
+          <Text style={styles.cartItemPrice}>
+            {price > 0 ? formatCurrency(price) : 'Rp 0'}
+          </Text>
         </View>
         <View style={styles.cartItemActions}>
           <TouchableOpacity
@@ -431,7 +144,7 @@ export default function NewTransactionScreen({ navigation }) {
             <TouchableOpacity 
               style={styles.scanButton} 
               onPress={openScanner}
-              disabled={loading || !isProductsLoaded} // ← ADD DISABLED STATE
+              disabled={loading || !isProductsLoaded}
             >
               <Text style={styles.scanButtonText}>
                 {loading || !isProductsLoaded ? 'Memuat Produk...' : 'Buka Scanner'}
@@ -443,7 +156,7 @@ export default function NewTransactionScreen({ navigation }) {
         {/* Product List Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Pilih</Text>
+            <Text style={styles.sectionTitle}>Pilih Produk</Text>
           </View>
           <TextInput
             style={styles.searchInput}
@@ -534,12 +247,12 @@ export default function NewTransactionScreen({ navigation }) {
             <Text style={styles.sectionTitle}>Informasi Pelanggan</Text>
           </View>
           <View style={styles.customerCard}>
-            <Text style={styles.label}>Nama Pelanggan *</Text>
+            <Text style={styles.label}>Nama Pelanggan</Text>
             <TextInput
               style={styles.input}
               value={customerData.customer_name}
-              onChangeText={(text) => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'customer_name', value: text })}
-              placeholder="Masukkan nama pelanggan"
+              onChangeText={(text) => handleUpdateCustomerField('customer_name', text)}
+              placeholder="Masukkan nama pelanggan (opsional)"
               placeholderTextColor={COLORS.davysGray}
             />
 
@@ -547,40 +260,83 @@ export default function NewTransactionScreen({ navigation }) {
             <TextInput
               style={styles.input}
               value={customerData.phone_number}
-              onChangeText={(text) => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'phone_number', value: text })}
-              placeholder="Masukkan nomor telepon"
+              onChangeText={(text) => handleUpdateCustomerField('phone_number', text)}
+              placeholder="Masukkan nomor telepon (opsional)"
               placeholderTextColor={COLORS.davysGray}
               keyboardType="phone-pad"
             />
 
-            <Text style={styles.label}>Metode Pembayaran</Text>
+            <Text style={styles.label}>Metode Pembayaran *</Text>
             <View style={styles.paymentMethodContainer}>
-              {['cash', 'transfer', 'card'].map((method) => (
+              {[
+                { value: 'cash', label: 'Tunai' },
+                { value: 'qris', label: 'QRIS' },
+                { value: 'debit', label: 'Debit' },
+                { value: 'transfer', label: 'Transfer' },
+              ].map((method) => (
                 <TouchableOpacity
-                  key={method}
+                  key={method.value}
                   style={[
                     styles.paymentMethodButton,
-                    customerData.payment_method === method && styles.paymentMethodActive,
+                    customerData.payment_method === method.value && styles.paymentMethodActive,
                   ]}
-                  onPress={() => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'payment_method', value: method })}
+                  onPress={() => {
+                    handleUpdateCustomerField('payment_method', method.value);
+                    // Reset card_type jika bukan debit
+                    if (method.value !== 'debit') {
+                      handleUpdateCustomerField('card_type', null);
+                    }
+                  }}
                 >
                   <Text
                     style={[
                       styles.paymentMethodText,
-                      customerData.payment_method === method && styles.paymentMethodTextActive,
+                      customerData.payment_method === method.value && styles.paymentMethodTextActive,
                     ]}
                   >
-                    {method.charAt(0).toUpperCase() + method.slice(1)}
+                    {method.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
+            {/* Card Type Selection (hanya muncul jika payment method = debit) */}
+            {customerData.payment_method === 'debit' && (
+              <>
+                <Text style={styles.label}>Jenis Kartu Debit *</Text>
+                <View style={styles.paymentMethodContainer}>
+                  {[
+                    { value: 'Mandiri', label: 'Mandiri' },
+                    { value: 'BRI', label: 'BRI' },
+                    { value: 'BCA', label: 'BCA' },
+                  ].map((card) => (
+                    <TouchableOpacity
+                      key={card.value}
+                      style={[
+                        styles.cardTypeButton,
+                        customerData.card_type === card.value && styles.cardTypeActive,
+                      ]}
+                      onPress={() => handleUpdateCustomerField('card_type', card.value)}
+                    >
+                      <Text
+                        style={[
+                          styles.cardTypeText,
+                          customerData.card_type === card.value && styles.cardTypeTextActive,
+                        ]}
+                      >
+                        {card.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
             <Text style={styles.label}>Catatan</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={customerData.notes}
-              onChangeText={(text) => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'notes', value: text })}
+              onChangeText={(text) => handleUpdateCustomerField('notes', text)}
               placeholder="Catatan tambahan (opsional)"
               placeholderTextColor={COLORS.davysGray}
               multiline
@@ -623,21 +379,9 @@ export default function NewTransactionScreen({ navigation }) {
             </View>
 
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Diskon (%)</Text>
-              <TextInput
-                style={styles.discountInput}
-                value={discount.toString()}
-                onChangeText={(text) => setDiscount(parseFloat(text) || 0)}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={COLORS.davysGray}
-              />
-            </View>
-
-            <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Harga Baru (opsional)</Text>
               <TextInput
-                style={styles.discountInput}
+                style={styles.newPriceInput}
                 value={newPrice}
                 onChangeText={setNewPrice}
                 keyboardType="decimal-pad"
@@ -645,6 +389,16 @@ export default function NewTransactionScreen({ navigation }) {
                 placeholderTextColor={COLORS.davysGray}
               />
             </View>
+
+            {/* Tampilkan diskon otomatis (read-only) jika ada harga baru */}
+            {newPrice && parseFloat(newPrice) > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.discountLabel}>Diskon</Text>
+                <Text style={styles.discountValue}>
+                  - {formatCurrency(calculateDiscountAmount())}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.divider} />
 
@@ -670,7 +424,7 @@ export default function NewTransactionScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* QR Code Scanner modal/component */}
+      {/* QR Code Scanner Modal */}
       <QRCodeScanner
         visible={showScanner}
         availableProducts={products}
@@ -679,8 +433,6 @@ export default function NewTransactionScreen({ navigation }) {
         onScanError={handleScanError}
         onRequestRefresh={loadProducts}
       />
-
-      <View style={{ height: 0 }} />
     </View>
   );
 }
@@ -828,9 +580,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 8,
+    flexWrap: 'wrap',
   },
   paymentMethodButton: {
     flex: 1,
+    minWidth: '22%',
     paddingVertical: 12,
     borderRadius: 8,
     backgroundColor: COLORS.linen,
@@ -848,6 +602,27 @@ const styles = StyleSheet.create({
     color: COLORS.davysGray,
   },
   paymentMethodTextActive: {
+    color: COLORS.white,
+  },
+  cardTypeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: COLORS.linen,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.linen,
+  },
+  cardTypeActive: {
+    backgroundColor: COLORS.jet,
+    borderColor: COLORS.jet,
+  },
+  cardTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.davysGray,
+  },
+  cardTypeTextActive: {
     color: COLORS.white,
   },
   emptyCart: {
@@ -934,7 +709,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.jet,
   },
-  discountInput: {
+  newPriceInput: {
     backgroundColor: COLORS.linen,
     borderRadius: 8,
     padding: 8,
@@ -942,6 +717,16 @@ const styles = StyleSheet.create({
     color: COLORS.jet,
     width: 120,
     textAlign: 'right',
+  },
+  discountLabel: {
+    fontSize: 14,
+    color: COLORS.success,
+    fontWeight: '600',
+  },
+  discountValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.success,
   },
   divider: {
     height: 1,
@@ -970,7 +755,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  // Pagination Styles
   paginationContainer: {
     backgroundColor: COLORS.jet,
     paddingVertical: 16,
