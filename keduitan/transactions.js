@@ -63,18 +63,39 @@ export const createTransaction = async (data) => {
       };
     }
 
-    if (!data.customerName) {
-      return {
-        success: false,
-        error: 'Nama pelanggan harus diisi',
-      };
-    }
+    // Customer name is optional (sesuai dengan Laravel API)
+    // if (!data.customerName) {
+    //   return {
+    //     success: false,
+    //     error: 'Nama pelanggan harus diisi',
+    //   };
+    // }
+
+    // FIXED: Pastikan discount_amount selalu dikirim (required by API)
+    // Format payload sesuai dengan Laravel API requirement
+    const payload = {
+      customer_name: data.customerName || data.customer_name || null,
+      customer_phone: data.customerPhone || data.customer_phone || null,
+      customer_email: data.customerEmail || data.customer_email || null,
+      payment_method: data.paymentMethod || data.payment_method || 'cash',
+      card_type: data.cardType || data.card_type || null,
+      discount_amount: parseFloat(data.discountAmount || data.discount_amount || 0), // REQUIRED by API
+      products: (data.products || []).map(product => ({
+        product_id: product.productId || product.product_id,
+        unit_code: product.unitCode || product.unit_code ? (product.unitCode || product.unit_code).toUpperCase().trim() : null,
+        quantity: parseInt(product.quantity) || 1,
+        new_price: product.newPrice || product.new_price ? parseFloat(product.newPrice || product.new_price) : null,
+      })),
+      overall_new_price: data.overallNewPrice || data.overall_new_price ? parseFloat(data.overallNewPrice || data.overall_new_price) : null,
+      notes: data.notes || null,
+    };
 
     const config = await getAxiosConfig();
     console.log('Sending transaction to:', `${BASE_URL}/transactions`);
-    console.log('Transaction payload:', data);
+    console.log('Transaction payload:', JSON.stringify(payload, null, 2));
+    console.log('discount_amount:', payload.discount_amount);
     
-    const response = await axios.post(`${BASE_URL}/transactions`, data, config);
+    const response = await axios.post(`${BASE_URL}/transactions`, payload, config);
     
     return {
       success: true,

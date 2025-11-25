@@ -1,291 +1,350 @@
-// data/services/transactionService.js
-// ==================== TRANSACTION SERVICE ====================
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import apiClient, { formatError, formatResponse } from '../api';
-import { API_ENDPOINTS, PAGINATION, PAYMENT_METHODS } from '../constants';
+const BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
 
-// ==================== TRANSACTIONS ====================
+// Helper function to get auth token
+const getAuthToken = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    return token;
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+    return null;
+  }
+};
+
+// Helper function to create axios config with auth
+const getAxiosConfig = async () => {
+  const token = await getAuthToken();
+  return {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  };
+};
 
 /**
- * Get all transactions with filters
- * @param {Object} params - Query parameters
- * @returns {Promise<Object>} Transactions data
+ * Get all transactions
  */
-export const getTransactions = async (params = {}) => {
+export const getTransactions = async () => {
   try {
-    const queryParams = {
-      page: params.page || PAGINATION.DEFAULT_PAGE,
-      per_page: params.perPage || PAGINATION.DEFAULT_PER_PAGE,
-      date: params.date || '',
-      payment_method: params.paymentMethod || '',
-      status: params.status || '',
-      no_cache: params.noCache || false,
-    };
-
-    const response = await apiClient.get(API_ENDPOINTS.TRANSACTIONS, {
-      params: queryParams,
-    });
-
-    const data = response.data;
-
-    if (!data.success) {
-      throw new Error(data.message || 'Gagal mengambil data transaksi');
-    }
-
-    // Format data untuk UI
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${BASE_URL}/transactions`, config);
     return {
       success: true,
-      data: {
-        transactions: (data.data.transactions || []).map(transaction => ({
-          id: transaction.id,
-          invoiceNumber: transaction.invoice_number,
-          userId: transaction.user_id,
-          userName: transaction.user_name || 'Unknown',
-          totalAmount: parseFloat(transaction.total_amount || 0),
-          taxAmount: parseFloat(transaction.tax_amount || 0),
-          discountAmount: parseFloat(transaction.discount_amount || 0),
-          finalAmount: parseFloat(transaction.final_amount || 0),
-          paymentMethod: transaction.payment_method,
-          cardType: transaction.card_type,
-          paymentStatus: transaction.payment_status,
-          customerName: transaction.customer_name,
-          customerPhone: transaction.customer_phone,
-          customerEmail: transaction.customer_email,
-          notes: transaction.notes,
-          createdAt: transaction.created_at,
-          items: (transaction.items || []).map(item => ({
-            id: item.id,
-            productId: item.product_id,
-            productName: item.product_name || 'Produk Tidak Dikenal',
-            productUnitId: item.product_unit_id,
-            unitCode: item.unit_code,
-            color: item.color || '-',
-            size: item.size || '-',
-            quantity: item.quantity,
-            price: parseFloat(item.price || 0),
-            discount: parseFloat(item.discount || 0),
-            subtotal: parseFloat(item.subtotal || 0),
-          })),
-        })),
-        pagination: data.data.pagination || {},
-        statistics: {
-          totalTransactions: data.data.total_transactions || 0,
-          totalAmount: parseFloat(data.data.total_amount || 0),
-          pendingTransactions: data.data.pending_transactions || 0,
-        },
-      },
+      data: response.data,
     };
   } catch (error) {
-    console.error('[TransactionService] Get transactions error:', error);
-    throw formatError(error);
+    console.error('Error fetching transactions:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Failed to fetch transactions',
+    };
+  }
+};
+
+/**
+ * Create new transaction
+ * ✅ IMPROVED: Better validation and payload formatting
+ */
+export const createTransaction = async (data) => {
+  try {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🚀 [TransactionService] Creating transaction...');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // ✅ VALIDASI: Basic validation
+    if (!data || !data.products || data.products.length === 0) {
+      console.error('❌ Validation failed: No products');
+      return {
+        success: false,
+        error: 'Produk tidak boleh kosong',
+      };
+    }
+
+    // ✅ VALIDASI: Payment method
+    if (!data.paymentMethod && !data.payment_method) {
+      console.error('❌ Validation failed: No payment method');
+      return {
+        success: false,
+        error: 'Metode pembayaran harus dipilih',
+      };
+    }
+
+    // ✅ VALIDASI: Card type jika payment method = debit
+    const paymentMethod = data.paymentMethod || data.payment_method;
+    if (paymentMethod === 'debit' && !data.cardType && !data.card_type) {
+      console.error('❌ Validation failed: No card type for debit payment');
+      return {
+        success: false,
+        error: 'Jenis kartu debit harus dipilih',
+      };
+    }
+
+    // ✅ VALIDASI: Semua produk harus memiliki unit_code yang valid
+    const invalidProducts = data.products.filter(p => {
+      const unitCode = p.unit_code || p.unitCode;
+      const productId = p.product_id || p.productId;
+      return !unitCode || unitCode.trim() === '' || !productId;
+    });
+
+    if (invalidProducts.length > 0) {
+      console.error('❌ Validation failed: Invalid products', invalidProducts);
+      return {
+        success: false,
+        error: `${invalidProducts.length} produk tidak memiliki unit_code atau product_id yang valid`,
+      };
+    }
+
+    // ✅ IMPROVED: Format payload sesuai dengan Laravel API requirement
+    const payload = {
+      customer_name: data.customerName || data.customer_name || null,
+      customer_phone: data.customerPhone || data.customer_phone || null,
+      customer_email: data.customerEmail || data.customer_email || null,
+      payment_method: paymentMethod,
+      card_type: (paymentMethod === 'debit') ? (data.cardType || data.card_type) : null,
+      discount_amount: parseFloat(data.discountAmount || data.discount_amount || 0), // ✅ REQUIRED by API
+      products: (data.products || []).map(product => {
+        const unitCode = (product.unit_code || product.unitCode || '').trim().toUpperCase();
+        const productId = product.product_id || product.productId;
+        const quantity = parseInt(product.quantity) || 1;
+        const newPrice = product.new_price || product.newPrice;
+
+        // ✅ Log each product mapping
+        console.log(`📦 Mapping product:`, {
+          product_id: productId,
+          unit_code: unitCode,
+          quantity: quantity,
+          new_price: newPrice || 'null',
+        });
+
+        return {
+          product_id: productId, // ✅ Backend tidak pakai ini, tapi tetap kirim untuk reference
+          unit_code: unitCode,   // ✅ CRITICAL: Backend pakai ini untuk cari produk di database
+          quantity: quantity,
+          new_price: newPrice ? parseFloat(newPrice) : null,
+        };
+      }),
+      overall_new_price: data.overallNewPrice || data.overall_new_price 
+        ? parseFloat(data.overallNewPrice || data.overall_new_price) 
+        : null,
+      notes: data.notes || null,
+    };
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📤 [API] Sending payload:');
+    console.log(JSON.stringify(payload, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    const config = await getAxiosConfig();
+    const url = `${BASE_URL}/transactions`;
+    
+    console.log(`🌐 [API] POST to: ${url}`);
+    
+    const response = await axios.post(url, payload, config);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ [API] Response received:');
+    console.log('Status:', response.status);
+    console.log('Data:', JSON.stringify(response.data, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ [API] Error creating transaction:');
+    console.error('Error message:', error.message);
+    
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      console.error('Response headers:', error.response.headers);
+    } else if (error.request) {
+      console.error('No response received:', error.request);
+    } else {
+      console.error('Request setup error:', error.message);
+    }
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    // ✅ IMPROVED: Better error message extraction
+    let errorMessage = 'Gagal membuat transaksi';
+    
+    if (error.response?.data) {
+      // Laravel API error format
+      if (error.response.data.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response.data.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response.data.errors) {
+        // Validation errors
+        const errors = error.response.data.errors;
+        const firstError = Object.values(errors)[0];
+        errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
   }
 };
 
 /**
  * Get transaction by ID
- * @param {number} id - Transaction ID
- * @returns {Promise<Object>} Transaction detail
  */
 export const getTransactionById = async (id) => {
   try {
-    const response = await apiClient.get(API_ENDPOINTS.TRANSACTION_BY_ID(id));
-    
-    const data = response.data;
-
-    if (!data.success) {
-      throw new Error(data.message || 'Gagal mengambil detail transaksi');
-    }
-
-    const transaction = data.data;
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${BASE_URL}/transactions/${id}`, config);
     return {
       success: true,
-      data: {
-        id: transaction.id,
-        invoiceNumber: transaction.invoice_number,
-        userId: transaction.user_id,
-        userName: transaction.user_name || 'Unknown',
-        totalAmount: parseFloat(transaction.total_amount || 0),
-        taxAmount: parseFloat(transaction.tax_amount || 0),
-        discountAmount: parseFloat(transaction.discount_amount || 0),
-        finalAmount: parseFloat(transaction.final_amount || 0),
-        paymentMethod: transaction.payment_method,
-        cardType: transaction.card_type,
-        paymentStatus: transaction.payment_status,
-        customerName: transaction.customer_name,
-        customerPhone: transaction.customer_phone,
-        customerEmail: transaction.customer_email,
-        notes: transaction.notes,
-        createdAt: transaction.created_at,
-        items: (transaction.items || []).map(item => ({
-          id: item.id,
-          productId: item.product_id,
-          productName: item.product_name || 'Produk Tidak Dikenal',
-          productUnitId: item.product_unit_id,
-          unitCode: item.unit_code,
-          color: item.color || '-',
-          size: item.size || '-',
-          quantity: item.quantity,
-          price: parseFloat(item.price || 0),
-          discount: parseFloat(item.discount || 0),
-          subtotal: parseFloat(item.subtotal || 0),
-        })),
-      },
+      data: response.data,
     };
   } catch (error) {
-    console.error('[TransactionService] Get transaction by ID error:', error);
-    throw formatError(error);
+    console.error('Error fetching transaction:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Failed to fetch transaction',
+    };
   }
 };
 
 /**
- * Create new transaction (Checkout)
- * @param {Object} transactionData - Transaction data
- * @returns {Promise<Object>} Created transaction
+ * Filter transactions by date, payment method, and status
  */
-export const createTransaction = async (transactionData) => {
+export const filterTransactions = async (params) => {
   try {
-    const payload = {
-      customer_name: transactionData.customerName || null,
-      customer_phone: transactionData.customerPhone || null,
-      customer_email: transactionData.customerEmail || null,
-      payment_method: transactionData.paymentMethod, // cash, qris, debit, transfer
-      card_type: transactionData.cardType || null, // Mandiri, BRI, BCA (if debit)
-      discount_amount: parseFloat(transactionData.discountAmount || 0),
-      products: (transactionData.products || []).map(product => ({
-        unit_code: product.unitCode,
-        quantity: product.quantity,
-        discount_price: product.discountPrice ? parseFloat(product.discountPrice) : null,
-      })),
-      notes: transactionData.notes || null,
-    };
-
-    const response = await apiClient.post(API_ENDPOINTS.TRANSACTIONS, payload);
+    const config = await getAxiosConfig();
+    const queryParams = new URLSearchParams();
     
-    const data = response.data;
-
-    if (!data.success) {
-      throw new Error(data.message || 'Gagal membuat transaksi');
+    if (params.date) {
+      queryParams.append('date', params.date);
     }
-
+    if (params.startDate) {
+      queryParams.append('start_date', params.startDate);
+    }
+    if (params.endDate) {
+      queryParams.append('end_date', params.endDate);
+    }
+    if (params.payment_method) {
+      queryParams.append('payment_method', params.payment_method);
+    }
+    if (params.status) {
+      queryParams.append('status', params.status);
+    }
+    if (params.keyword) {
+      queryParams.append('keyword', params.keyword);
+    }
+    
+    const url = `${BASE_URL}/transactions?${queryParams.toString()}`;
+    const response = await axios.get(url, config);
+    
     return {
       success: true,
-      message: data.message || 'Transaksi berhasil dibuat',
-      data: {
-        transactionId: data.data.transaction_id,
-        invoiceNumber: data.data.invoice_number,
-      },
+      data: response.data,
     };
   } catch (error) {
-    console.error('[TransactionService] Create transaction error:', error);
-    const formattedError = formatError(error);
-    // Return error object instead of throwing, so caller can handle it
+    console.error('Error filtering transactions:', error);
     return {
       success: false,
-      error: formattedError.message || 'Gagal membuat transaksi',
-      message: formattedError.message || 'Gagal membuat transaksi',
-      statusCode: formattedError.statusCode,
+      error: error.response?.data?.message || 'Failed to filter transactions',
+      data: [],
     };
   }
 };
 
-// ==================== QR CODE SCANNING ====================
+/**
+ * Update transaction
+ */
+export const updateTransaction = async (id, data) => {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.put(`${BASE_URL}/transactions/${id}`, data, config);
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('Error updating transaction:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Failed to update transaction',
+    };
+  }
+};
+
+/**
+ * Delete transaction
+ */
+export const deleteTransaction = async (id) => {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.delete(`${BASE_URL}/transactions/${id}`, config);
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Failed to delete transaction',
+    };
+  }
+};
+
+/**
+ * Get transaction statistics
+ */
+export const getTransactionStats = async (params = {}) => {
+  try {
+    const config = await getAxiosConfig();
+    const queryParams = new URLSearchParams();
+    
+    if (params.startDate) queryParams.append('start_date', params.startDate);
+    if (params.endDate) queryParams.append('end_date', params.endDate);
+    
+    const url = `${BASE_URL}/transactions/stats?${queryParams.toString()}`;
+    const response = await axios.get(url, config);
+    
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Failed to fetch statistics',
+    };
+  }
+};
 
 /**
  * Add product by scanning QR code
- * @param {string} unitCode - Unit code from QR
- * @returns {Promise<Object>} Product data
  */
 export const addProductByQR = async (unitCode) => {
   try {
-    const response = await apiClient.get(API_ENDPOINTS.ADD_PRODUCT_BY_QR(unitCode));
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${BASE_URL}/products/qr/${unitCode}`, config);
     
-    const data = response.data;
-
-    if (!data.success) {
-      throw new Error(data.message || 'Produk tidak ditemukan');
-    }
-
     return {
       success: true,
-      data: {
-        productId: data.data.product_id,
-        productName: data.data.product_name,
-        color: data.data.color || '-',
-        size: data.data.size || '-',
-        sellingPrice: parseFloat(data.data.selling_price || 0),
-        discountPrice: data.data.discount_price ? parseFloat(data.data.discount_price) : null,
-        unitCode: data.data.unit_code,
-      },
+      data: response.data,
     };
   } catch (error) {
-    console.error('[TransactionService] Add product by QR error:', error);
-    throw formatError(error);
+    console.error('Error scanning QR:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Product not found',
+    };
   }
-};
-
-// ==================== HELPERS ====================
-
-/**
- * Validate payment method
- * @param {string} method - Payment method
- * @returns {boolean} Is valid
- */
-export const isValidPaymentMethod = (method) => {
-  return Object.values(PAYMENT_METHODS).includes(method);
-};
-
-/**
- * Format payment method for display
- * @param {string} method - Payment method
- * @param {string} cardType - Card type (if debit)
- * @returns {string} Formatted payment method
- */
-export const formatPaymentMethod = (method, cardType = null) => {
-  if (method === PAYMENT_METHODS.DEBIT && cardType) {
-    return `Debit ${cardType}`;
-  }
-  
-  const methodLabels = {
-    [PAYMENT_METHODS.CASH]: 'Tunai',
-    [PAYMENT_METHODS.QRIS]: 'QRIS',
-    [PAYMENT_METHODS.DEBIT]: 'Debit',
-    [PAYMENT_METHODS.TRANSFER]: 'Transfer',
-  };
-
-  return methodLabels[method] || method;
-};
-
-/**
- * Calculate transaction summary
- * @param {Array} items - Transaction items
- * @param {number} discountAmount - Total discount
- * @returns {Object} Summary
- */
-export const calculateTransactionSummary = (items, discountAmount = 0) => {
-  const subtotal = items.reduce((sum, item) => {
-    const price = parseFloat(item.price || item.sellingPrice || 0);
-    const quantity = parseInt(item.quantity || 1);
-    return sum + (price * quantity);
-  }, 0);
-
-  const totalDiscount = parseFloat(discountAmount || 0);
-  const total = Math.max(0, subtotal - totalDiscount);
-
-  return {
-    subtotal,
-    totalDiscount,
-    total,
-    itemCount: items.length,
-    totalQuantity: items.reduce((sum, item) => sum + parseInt(item.quantity || 1), 0),
-  };
-};
-
-export default {
-  getTransactions,
-  getTransactionById,
-  createTransaction,
-  addProductByQR,
-  isValidPaymentMethod,
-  formatPaymentMethod,
-  calculateTransactionSummary,
 };

@@ -320,6 +320,7 @@ const QRCodeScanner = ({
           code: product.code || unitCode,
           price: productPrice,
           quantity: 1,
+          discount_price: product.discount_price || product.discountPrice || null,
           // ✅ OPTIONAL: Tambahkan info tambahan jika ada
           color: product.color || product.warna || null,
           size: product.size || product.ukuran || null,
