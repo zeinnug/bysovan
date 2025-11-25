@@ -259,8 +259,8 @@ export default function NewTransactionScreen({ navigation }) {
             <Text style={styles.label}>No. Pelanggan</Text>
             <TextInput
               style={styles.input}
-              value={customerData.phone_number}
-              onChangeText={(text) => handleUpdateCustomerField('phone_number', text)}
+              value={customerData.customer_phone}
+              onChangeText={(text) => handleUpdateCustomerField('customer_phone', text)}
               placeholder="Masukkan nomor telepon (opsional)"
               placeholderTextColor={COLORS.davysGray}
               keyboardType="phone-pad"
@@ -428,7 +428,10 @@ export default function NewTransactionScreen({ navigation }) {
       <QRCodeScanner
         visible={showScanner}
         availableProducts={products}
-        onClose={() => setShowScanner(false)}
+        onClose={() => {
+          console.log('[NewTransactionScreen] Closing scanner');
+          setShowScanner(false);
+        }}
         onScanSuccess={handleScanSuccess}
         onScanError={handleScanError}
         onRequestRefresh={loadProducts}

@@ -177,7 +177,14 @@ export const createTransaction = async (transactionData) => {
     };
   } catch (error) {
     console.error('[TransactionService] Create transaction error:', error);
-    throw formatError(error);
+    const formattedError = formatError(error);
+    // Return error object instead of throwing, so caller can handle it
+    return {
+      success: false,
+      error: formattedError.message || 'Gagal membuat transaksi',
+      message: formattedError.message || 'Gagal membuat transaksi',
+      statusCode: formattedError.statusCode,
+    };
   }
 };
 

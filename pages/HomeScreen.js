@@ -15,7 +15,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { Octicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
@@ -622,6 +622,14 @@ const HomeScreen = () => {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  // Refresh when screen comes into focus (e.g., after returning from NewTransaction)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Dashboard focused - refreshing data...');
+      fetchDashboardData();
+    }, [fetchDashboardData])
+  );
 
   // Auto refresh every 5 seconds
   useEffect(() => {

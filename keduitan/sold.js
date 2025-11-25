@@ -1,7 +1,7 @@
-// keduitan/sold.js - Business Logic untuk Transaction (UPDATED - No Discount %)
+// keduitan/sold.js - Business Logic untuk Transaction (FIXED)
 import { useState, useEffect, useReducer } from 'react';
 import { Alert } from 'react-native';
-import { createTransaction } from './transactions';
+import { createTransaction } from '../data/services/transactionService';
 import { getProducts, updateProduct } from '../data/services/inventoryService';
 
 const customerReducer = (state, action) => {
@@ -11,7 +11,7 @@ const customerReducer = (state, action) => {
   if (action.type === 'RESET') {
     return { 
       customer_name: '', 
-      phone_number: '', 
+      customer_phone: '', 
       payment_method: 'cash', 
       card_type: null,
       notes: '' 
@@ -29,10 +29,10 @@ export const useTransactionLogic = (navigation) => {
   const [showScanner, setShowScanner] = useState(false);
   const [isProductsLoaded, setIsProductsLoaded] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [newPrice, setNewPrice] = useState(''); // Hanya newPrice, no discount %
+  const [newPrice, setNewPrice] = useState('');
   const [customerData, dispatchCustomer] = useReducer(customerReducer, {
     customer_name: '',
-    phone_number: '',
+    customer_phone: '',
     payment_method: 'cash',
     card_type: null,
     notes: '',
@@ -81,6 +81,12 @@ export const useTransactionLogic = (navigation) => {
             size: p.size || '',
             production_code: p.production_code || p.code || '',
             stock: parseInt(p.stock) || 0,
+            // Tambahkan field untuk QR scanner
+            barcode: p.barcode || unitCode,
+            unit_code: unitCode,
+            qr_code: unitCode,
+            // Tambahkan units array jika ada
+            units: p.units || [],
           };
         });
         
@@ -177,27 +183,21 @@ export const useTransactionLogic = (navigation) => {
     }, 0);
   };
 
-  // Hitung diskon otomatis dari selisih subtotal dan harga baru
+  // FIXED: Added calculateDiscountAmount function
   const calculateDiscountAmount = () => {
     const subtotal = calculateSubtotal();
-    
     if (newPrice && parseFloat(newPrice) > 0) {
-      const newPriceValue = parseFloat(newPrice);
-      // Diskon = Subtotal - Harga Baru (tidak boleh negatif)
-      return Math.max(0, subtotal - newPriceValue);
+      const discount = subtotal - parseFloat(newPrice);
+      return Math.max(0, discount);
     }
-    
     return 0;
   };
 
-  // Total = Harga Baru (jika ada), atau Subtotal (jika tidak ada diskon)
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
-    
     if (newPrice && parseFloat(newPrice) > 0) {
       return parseFloat(newPrice);
     }
-    
     return subtotal;
   };
 
@@ -208,12 +208,18 @@ export const useTransactionLogic = (navigation) => {
       return;
     }
 
+    // Customer name is optional (sesuai dengan UI yang menampilkan "opsional")
+    // if (!customerData.customer_name || !customerData.customer_name.trim()) {
+    //   Alert.alert('Error', 'Nama pelanggan harus diisi');
+    //   return;
+    // }
+
     if (!customerData.payment_method) {
       Alert.alert('Error', 'Pilih metode pembayaran');
       return;
     }
 
-    // Validasi card_type jika payment method adalah debit
+    // FIXED: Validasi card_type jika payment method adalah debit
     if (customerData.payment_method === 'debit' && !customerData.card_type) {
       Alert.alert('Error', 'Pilih jenis kartu debit');
       return;
@@ -222,8 +228,11 @@ export const useTransactionLogic = (navigation) => {
     setLoading(true);
 
     try {
+      const subtotal = calculateSubtotal();
       const discountAmountValue = calculateDiscountAmount();
+      const finalTotal = calculateTotal();
 
+      // FIXED: Validasi produk memiliki code
       const invalidProducts = cart.filter(item => !item.code || item.code.trim() === '');
       if (invalidProducts.length > 0) {
         Alert.alert('Error', 'Beberapa produk tidak memiliki kode. Silakan refresh data produk.');
@@ -231,58 +240,80 @@ export const useTransactionLogic = (navigation) => {
         return;
       }
 
+      // FIXED: Format data sesuai dengan requirement API
+      // FIXED: Format sesuai dengan transactionService.js (snake_case)
+      // FIXED: Customer name is optional - use null if empty
       const transactionData = {
-        customer_name: customerData.customer_name?.trim() || null,
-        customer_phone: customerData.phone_number?.trim() || null,
-        customer_email: null,
-        payment_method: customerData.payment_method.toLowerCase(),
-        card_type: customerData.card_type || null,
-        discount_amount: discountAmountValue, // Diskon dalam rupiah (WAJIB, minimal 0)
+        customerName: customerData.customer_name?.trim() || null,
+        customerPhone: customerData.customer_phone?.trim() || null,
+        customerEmail: null,
+        paymentMethod: customerData.payment_method.trim(),
+        cardType: customerData.payment_method === 'debit' ? customerData.card_type : null,
+        discountAmount: discountAmountValue,
         products: cart.map((item) => ({
-          unit_code: item.code.trim(),
+          unitCode: item.code.trim(),
           quantity: parseInt(item.quantity) || 1,
-          discount_price: null,
+          discountPrice: null,
         })),
         notes: customerData.notes?.trim() || null,
       };
 
       console.log('Transaction data:', JSON.stringify(transactionData, null, 2));
 
-      const result = await createTransaction(transactionData);
+      let result;
+      try {
+        result = await createTransaction(transactionData);
+      } catch (error) {
+        // Handle error yang di-throw oleh createTransaction
+        console.error('Error creating transaction (caught):', error);
+        const errorMessage = error.message || error.response?.data?.message || 'Gagal membuat transaksi';
+        Alert.alert('Error', errorMessage);
+        setLoading(false);
+        return;
+      }
 
-      if (result.success) {
-        // Update stock produk
-        try {
-          for (const item of cart) {
-            const product = products.find(p => p.id === item.product_id || p.id === item.id);
-            if (product) {
-              const newStock = Math.max(0, (product.stock || 0) - (parseInt(item.quantity) || 1));
-              console.log(`Updating product ${product.id} stock from ${product.stock} to ${newStock}`);
-              
-              await updateProduct(product.id, {
-                ...product,
-                stock: newStock,
-              });
-            }
-          }
-        } catch (stockError) {
-          console.error('Warning: Failed to update inventory stock:', stockError);
-        }
-
-        Alert.alert('Sukses', 'Transaksi berhasil dibuat', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+      // Check if result has success property (from transactionService)
+      if (result && result.success) {
+        // FIXED: Stock update - simplified karena API limitation
+        console.log('[Transaction] Transaction successful, stock will be updated by backend');
         
-        // Reset form
+        // Reset semua state sebelum navigasi
         setCart([]);
         dispatchCustomer({ type: 'RESET' });
         setNewPrice('');
+        
+        // Show success alert dengan opsi untuk melihat transaksi
+        Alert.alert(
+          'Sukses', 
+          'Transaksi berhasil dibuat!\n\nTransaksi akan muncul di halaman laporan dan dashboard akan diperbarui.',
+          [
+            { 
+              text: 'Lihat Transaksi', 
+              onPress: () => {
+                // Navigate ke MainApp dengan tab Transaksi untuk melihat transaksi hari ini
+                // TransactionScreen akan auto-refresh karena menggunakan useFocusEffect
+                navigation.navigate('MainApp', { screen: 'Transaksi' });
+              }
+            },
+            { 
+              text: 'OK', 
+              onPress: () => {
+                // Kembali ke halaman sebelumnya (biasanya TransactionScreen atau HomeScreen)
+                navigation.goBack();
+              }
+            },
+          ]
+        );
       } else {
-        Alert.alert('Error', result.error || 'Gagal membuat transaksi');
+        // Handle error response dari API
+        const errorMessage = result?.error || result?.message || 'Gagal membuat transaksi';
+        console.error('Transaction failed:', errorMessage);
+        Alert.alert('Error', errorMessage);
       }
     } catch (error) {
-      console.error('Error creating transaction:', error);
-      Alert.alert('Error', error.message || 'Gagal membuat transaksi');
+      console.error('Error creating transaction (outer catch):', error);
+      const errorMessage = error.message || error.response?.data?.message || 'Gagal membuat transaksi';
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -290,6 +321,20 @@ export const useTransactionLogic = (navigation) => {
 
   // Scanner operations
   const openScanner = () => {
+    console.log('[Scanner] Opening scanner...');
+    console.log('[Scanner] isProductsLoaded:', isProductsLoaded);
+    console.log('[Scanner] products.length:', products.length);
+    console.log('[Scanner] loading:', loading);
+    
+    if (loading) {
+      Alert.alert(
+        'Tunggu',
+        'Data produk sedang dimuat. Silakan coba lagi dalam beberapa detik.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
     if (!isProductsLoaded) {
       Alert.alert(
         'Tunggu',
@@ -303,19 +348,31 @@ export const useTransactionLogic = (navigation) => {
       Alert.alert(
         'Tidak Ada Data',
         'Tidak ada produk yang tersedia untuk di-scan. Tambahkan produk terlebih dahulu.',
-        [{ text: 'OK' }]
+        [
+          { 
+            text: 'Refresh Data', 
+            onPress: () => {
+              loadProducts();
+            }
+          },
+          { text: 'OK' }
+        ]
       );
       return;
     }
     
+    console.log('[Scanner] Opening scanner modal...');
     setShowScanner(true);
   };
 
   const handleScanSuccess = (cartItem) => {
+    console.log('[Scanner] Scan success, cartItem:', cartItem);
+    
     if (cartItem && cartItem.id) {
       const existingItem = cart.find((item) => item.id === cartItem.id);
 
       if (existingItem) {
+        console.log('[Scanner] Product already in cart, increasing quantity');
         setCart(
           cart.map((item) =>
             item.id === cartItem.id
@@ -324,6 +381,7 @@ export const useTransactionLogic = (navigation) => {
           )
         );
       } else {
+        console.log('[Scanner] Adding new product to cart');
         setCart([...cart, cartItem]);
       }
 
@@ -331,11 +389,13 @@ export const useTransactionLogic = (navigation) => {
         Alert.alert('Berhasil', `${cartItem.name} ditambahkan ke keranjang dari hasil scan`);
       }, 300);
     } else {
+      console.warn('[Scanner] Invalid cartItem:', cartItem);
       Alert.alert('Info', 'Hasil scan tidak cocok dengan produk yang tersedia');
     }
   };
 
   const handleScanError = (title = 'Error', message = 'Gagal melakukan scan') => {
+    console.error('[Scanner] Scan error:', { title, message });
     setShowScanner(false);
     Alert.alert(title, message);
   };
@@ -367,7 +427,7 @@ export const useTransactionLogic = (navigation) => {
     removeFromCart,
     updateQuantity,
     calculateSubtotal,
-    calculateDiscountAmount, // Export untuk ditampilkan di UI
+    calculateDiscountAmount, // FIXED: Exported function
     calculateTotal,
     handleCheckout,
     openScanner,
