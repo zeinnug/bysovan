@@ -51,22 +51,42 @@ export const getTransactions = async () => {
 
 /**
  * Create new transaction
- * @param {Object} data - Transaction data
+ * @param {Object} data - Transaction data dengan format API yang sesuai
  * @returns {Promise} Created transaction
  */
 export const createTransaction = async (data) => {
   try {
+    if (!data || !data.products || data.products.length === 0) {
+      return {
+        success: false,
+        error: 'Produk tidak boleh kosong',
+      };
+    }
+
+    if (!data.customerName) {
+      return {
+        success: false,
+        error: 'Nama pelanggan harus diisi',
+      };
+    }
+
     const config = await getAxiosConfig();
+    console.log('Sending transaction to:', `${BASE_URL}/transactions`);
+    console.log('Transaction payload:', data);
+    
     const response = await axios.post(`${BASE_URL}/transactions`, data, config);
+    
     return {
       success: true,
       data: response.data,
     };
   } catch (error) {
     console.error('Error creating transaction:', error);
+    console.error('Error response:', error.response?.data);
+    
     return {
       success: false,
-      error: error.response?.data?.message || 'Failed to create transaction',
+      error: error.response?.data?.message || error.response?.data?.error || error.message || 'Gagal membuat transaksi',
     };
   }
 };

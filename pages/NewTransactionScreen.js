@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useReducer } from 'react';
 import {
   View,
   Text,
@@ -11,22 +11,19 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createTransaction } from '../keduitan/transactions';
-import QRCodeScanner from '../keduitan/qrscan'; // <-- added QR scanner component
+import QRCodeScanner from '../keduitan/qrscan';
+import { COLORS, cardShadow, formatCurrency } from '../utils/styleHelpers';
+import { getProducts, updateProduct } from '../data/services/inventoryService';
 
-const BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
-
-// Color Palette
-const COLORS = {
-  jet: '#292929',
-  davysGray: '#585757',
-  linen: '#F5ECE4',
-  pumpkin: '#FC6A0A',
-  goldenGate: '#E74504',
-  white: '#FFFFFF',
-  success: '#32CD32',
+const customerReducer = (state, action) => {
+  if (action.type === 'UPDATE_FIELD') {
+    return { ...state, [action.field]: action.value };
+  }
+  if (action.type === 'RESET') {
+    return { customer_name: '', phone_number: '', payment_method: 'cash', notes: '' };
+  }
+  return state;
 };
 
 export default function NewTransactionScreen({ navigation }) {
@@ -36,150 +33,105 @@ export default function NewTransactionScreen({ navigation }) {
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [isProductsLoaded, setIsProductsLoaded] = useState(false); // ← ADD THIS
-  const [currentPage, setCurrentPage] = useState(1); // Pagination state
-  const itemsPerPage = 5; // 5 cards per page
-
-  // Customer Data
-  const [customerData, setCustomerData] = useState({
+  const [isProductsLoaded, setIsProductsLoaded] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [discount, setDiscount] = useState(0);
+  const [newPrice, setNewPrice] = useState('');
+  const [customerData, dispatchCustomer] = useReducer(customerReducer, {
     customer_name: '',
     phone_number: '',
     payment_method: 'cash',
     notes: '',
   });
+  
+  const itemsPerPage = 5;
 
-  // Payment Summary
-  const [discount, setDiscount] = useState(0);
-  const [newPrice, setNewPrice] = useState('');
+  useEffect(() => {
+    const filtered = !searchQuery.trim() ? products : products.filter((p) =>
+      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.code?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredProducts(filtered);
+    setCurrentPage(1);
+  }, [searchQuery, products]);
+
+  const loadProducts = async () => {
+    try {
+      setLoading(true);
+      setIsProductsLoaded(false);
+      
+      // Gunakan getProducts dari service (sama seperti InventoryScreen)
+      const result = await getProducts({ perPage: 1000 });
+      
+      if (result.success && result.data?.products) {
+        // Map produk dengan field harga yang sesuai dan generate kode jika kosong
+        const mappedProducts = result.data.products.map((p) => {
+          // Generate unit code sesuai dengan logika InventoryScreen
+          let unitCode = '';
+          if (p.units && p.units.length > 0 && p.units[0].unitCode) {
+            unitCode = p.units[0].unitCode;
+          } else if (p.barcode) {
+            unitCode = p.barcode;
+          } else if (p.code) {
+            unitCode = p.code;
+          } else {
+            // Fallback: generate dari ID
+            unitCode = `BYS${p.id}${Date.now().toString().slice(-6)}`;
+          }
+
+          return {
+            id: p.id,
+            product_id: p.id,
+            name: p.name || p.model || '',
+            code: unitCode, // Gunakan generated unit code
+            // Gunakan selling_price atau sellingPrice (sesuai dengan API)
+            price: parseFloat(p.selling_price || p.sellingPrice || p.price || 0),
+            color: p.color || '',
+            size: p.size || '',
+            production_code: p.production_code || p.code || '',
+            stock: parseInt(p.stock) || 0,
+          };
+        });
+        
+        console.log('✓ Products loaded:', mappedProducts.length);
+        console.log('Sample product:', mappedProducts[0]);
+        
+        setProducts(mappedProducts);
+        setFilteredProducts(mappedProducts);
+      } else {
+        console.warn('No products found or invalid response format');
+        Alert.alert('Warning', 'Tidak ada data produk yang tersedia');
+        setProducts([]);
+        setFilteredProducts([]);
+      }
+    } catch (error) {
+      console.error('Error loading products:', error);
+      Alert.alert('Error', 'Gagal memuat data produk. Periksa koneksi internet.');
+      setProducts([]);
+      setFilteredProducts([]);
+    } finally {
+      setLoading(false);
+      setIsProductsLoaded(true);
+    }
+  };
 
   useEffect(() => {
     loadProducts();
   }, []);
 
-  // Filter products when search query or products change
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredProducts(products);
-      return;
-    }
-
-    const filtered = products.filter((product) =>
-      product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.code?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setFilteredProducts(filtered);
-  }, [searchQuery, products]);
-
-  const getAuthToken = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      return token;
-    } catch (error) {
-      console.error('Error getting auth token:', error);
-      return null;
-    }
-  };
-
-  const getAxiosConfig = async () => {
-    const token = await getAuthToken();
-    return {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    };
-  };
-
-  const loadProducts = async () => {
-    setLoading(true);
-    setIsProductsLoaded(false);
-    try {
-      const config = await getAxiosConfig();
-      const response = await axios.get(`${BASE_URL}/products`, config);
-      
-      // ✅ FIX: Pastikan productData adalah array
-      let productData = [];
-      
-      if (response.data.products && Array.isArray(response.data.products)) {
-        productData = response.data.products;
-      } else if (response.data.data && Array.isArray(response.data.data.products)) {
-        productData = response.data.data.products;
-      } else if (Array.isArray(response.data)) {
-        productData = response.data;
-      } else {
-        console.warn('Unexpected response format:', response.data);
-        productData = [];
-      }
-      
-      // ✅ DETAILED DEBUG LOGGING
-      console.log('=== PRODUCTS DEBUG ===');
-      console.log('Type:', typeof productData);
-      console.log('Is Array:', Array.isArray(productData));
-      console.log('Length:', productData.length);
-      if (productData.length > 0) {
-        console.log('Sample product:', productData[0]);
-        console.log('Sample product keys:', Object.keys(productData[0]));
-        console.log('Sample product.price:', productData[0].price);
-        console.log('Sample product.code:', productData[0].code);
-        console.log('Sample product.id:', productData[0].id);
-      }
-      console.log('=== END DEBUG ===');
-      
-      console.log('✓ Products loaded:', productData.length);
-      
-      setProducts(productData);
-      setFilteredProducts(productData);
-      setIsProductsLoaded(true);
-    } catch (error) {
-      console.error('Error loading products:', error);
-      console.error('Error response:', error.response?.data);
-      Alert.alert('Error', 'Gagal memuat data produk');
-      setProducts([]); // ← SET EMPTY ARRAY ON ERROR
-      setFilteredProducts([]);
-      setIsProductsLoaded(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterProducts = () => {
-    if (!searchQuery.trim()) {
-      setFilteredProducts(products);
-      return;
-    }
-
-    const filtered = products.filter((product) =>
-      product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.code?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setFilteredProducts(filtered);
-  };
-
-  // Reset to page 1 when filtered products change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filteredProducts]);
-
-  // Calculate pagination
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentProducts = filteredProducts.slice(startIndex, endIndex);
-
-  // Pagination handlers
-  const handlePrevious = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
+  const currentProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+  const handlePrevious = () => currentPage > 1 && setCurrentPage(currentPage - 1);
+  const handleNext = () => currentPage < totalPages && setCurrentPage(currentPage + 1);
 
   const addToCart = (product) => {
+    if (!product) {
+      Alert.alert('Error', 'Produk tidak valid');
+      return;
+    }
+
+    const price = parseFloat(product.price) || 0;
     const existingItem = cart.find((item) => item.id === product.id);
 
     if (existingItem) {
@@ -198,12 +150,13 @@ export default function NewTransactionScreen({ navigation }) {
           product_id: product.id,
           name: product.name,
           code: product.code,
-          price: parseFloat(product.price || 0),
+          price: price,
           quantity: 1,
         },
       ]);
     }
 
+    console.log('Added to cart:', { id: product.id, name: product.name, price: price });
     Alert.alert('Berhasil', `${product.name} ditambahkan ke keranjang`);
   };
 
@@ -225,14 +178,20 @@ export default function NewTransactionScreen({ navigation }) {
   };
 
   const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    return cart.reduce((sum, item) => {
+      const price = parseFloat(item.price) || 0;
+      const quantity = parseInt(item.quantity) || 1;
+      return sum + (price * quantity);
+    }, 0);
   };
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
-    const discountAmount = (subtotal * discount) / 100;
-    const afterDiscount = subtotal - discountAmount;
-    return newPrice ? parseFloat(newPrice) : afterDiscount;
+    if (newPrice && parseFloat(newPrice) > 0) {
+      return parseFloat(newPrice);
+    }
+    const discountAmount = (subtotal * (parseFloat(discount) || 0)) / 100;
+    return Math.max(0, subtotal - discountAmount);
   };
 
   const handleCheckout = async () => {
@@ -241,54 +200,87 @@ export default function NewTransactionScreen({ navigation }) {
       return;
     }
 
-    if (!customerData.customer_name.trim()) {
-      Alert.alert('Error', 'Mohon isi nama pelanggan');
+    if (!customerData.customer_name || !customerData.customer_name.trim()) {
+      Alert.alert('Error', 'Nama pelanggan harus diisi');
+      return;
+    }
+
+    // Validasi payment method
+    if (!customerData.payment_method) {
+      Alert.alert('Error', 'Pilih metode pembayaran');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Gunakan fungsi dari transactions.js untuk konsistensi
-      const result = await createTransaction({
-        customer_name: customerData.customer_name,
-        phone_number: customerData.phone_number,
-        payment_method: customerData.payment_method,
-        notes: customerData.notes,
-        items: cart.map((item) => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          price: item.price,
+      const subtotal = calculateSubtotal();
+      const discountPercentage = parseFloat(discount) || 0;
+      const discountAmountValue = (subtotal * discountPercentage) / 100;
+      const finalTotal = newPrice ? parseFloat(newPrice) : Math.max(0, subtotal - discountAmountValue);
+
+      // Validasi unit code - harus ada kode produk yang valid
+      const invalidProducts = cart.filter(item => !item.code || item.code.trim() === '');
+      if (invalidProducts.length > 0) {
+        Alert.alert('Error', 'Beberapa produk tidak memiliki kode. Silakan refresh data produk.');
+        setLoading(false);
+        return;
+      }
+
+      // Format data sesuai dengan API requirement di transactionService
+      const transactionData = {
+        customerName: customerData.customer_name.trim(),
+        customerPhone: customerData.phone_number?.trim() || null,
+        customerEmail: null,
+        paymentMethod: customerData.payment_method.trim(),
+        cardType: null,
+        discountAmount: Math.max(0, discountAmountValue), // Ensure >= 0
+        products: cart.map((item) => ({
+          unitCode: item.code.trim(),
+          quantity: parseInt(item.quantity) || 1,
+          discountPrice: null,
         })),
-        subtotal: calculateSubtotal(),
-        discount: discount,
-        total: calculateTotal(),
-      });
+        notes: customerData.notes?.trim() || null,
+      };
+
+      console.log('Transaction data:', JSON.stringify(transactionData, null, 2));
+
+      const result = await createTransaction(transactionData);
 
       if (result.success) {
+        // Update stok di inventory untuk setiap produk
+        try {
+          for (const item of cart) {
+            const product = products.find(p => p.id === item.product_id || p.id === item.id);
+            if (product) {
+              const newStock = Math.max(0, (product.stock || 0) - (parseInt(item.quantity) || 1));
+              console.log(`Updating product ${product.id} stock from ${product.stock} to ${newStock}`);
+              
+              // Update stock di inventory
+              await updateProduct(product.id, {
+                ...product,
+                stock: newStock,
+              });
+            }
+          }
+        } catch (stockError) {
+          console.error('Warning: Failed to update inventory stock:', stockError);
+          // Jangan gagal transaksi karena error update stok
+        }
+
         Alert.alert('Sukses', 'Transaksi berhasil dibuat', [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
+          { text: 'OK', onPress: () => navigation.goBack() },
         ]);
-        
-        // Reset form
         setCart([]);
-        setCustomerData({
-          customer_name: '',
-          phone_number: '',
-          payment_method: 'cash',
-          notes: '',
-        });
+        dispatchCustomer({ type: 'RESET' });
         setDiscount(0);
         setNewPrice('');
       } else {
-        Alert.alert('Error', result.error);
+        Alert.alert('Error', result.error || 'Gagal membuat transaksi');
       }
     } catch (error) {
       console.error('Error creating transaction:', error);
-      Alert.alert('Error', 'Gagal membuat transaksi');
+      Alert.alert('Error', error.message || 'Gagal membuat transaksi');
     } finally {
       setLoading(false);
     }
@@ -355,66 +347,64 @@ export default function NewTransactionScreen({ navigation }) {
     Alert.alert(title, message);
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  const renderProductItem = ({ item }) => {
+    const price = parseFloat(item.price) || 0;
+    return (
+      <View style={styles.productCard}>
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>
+            {item.name} ({item.code})
+          </Text>
+          <Text style={styles.productPrice}>{price > 0 ? formatCurrency(price) : 'Rp 0'}</Text>
+          <Text style={styles.productDetails}>
+            {item.color && `${item.color}, `}
+            {item.size && `Ukuran ${item.size}, `}
+            {item.production_code || ''}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => addToCart(item)}
+        >
+          <Ionicons name="add" size={20} color={COLORS.white} />
+          <Text style={styles.addButtonText}>Tambah</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
-  const renderProductItem = ({ item }) => (
-    <View style={styles.productCard}>
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>
-          {item.name} ({item.code})
-        </Text>
-        <Text style={styles.productPrice}>{formatCurrency(item.price)}</Text>
-        <Text style={styles.productDetails}>
-          {item.color && `${item.color}, `}
-          {item.size && `Ukuran ${item.size}, `}
-          {item.production_code || ''}
-        </Text>
+  const renderCartItem = ({ item }) => {
+    const price = parseFloat(item.price) || 0;
+    return (
+      <View style={styles.cartItem}>
+        <View style={styles.cartItemInfo}>
+          <Text style={styles.cartItemName}>{item.name}</Text>
+          <Text style={styles.cartItemPrice}>{price > 0 ? formatCurrency(price) : 'Rp 0'}</Text>
+        </View>
+        <View style={styles.cartItemActions}>
+          <TouchableOpacity
+            style={styles.quantityButton}
+            onPress={() => updateQuantity(item.id, item.quantity - 1)}
+          >
+            <Ionicons name="remove" size={16} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.quantityText}>{item.quantity}</Text>
+          <TouchableOpacity
+            style={styles.quantityButton}
+            onPress={() => updateQuantity(item.id, item.quantity + 1)}
+          >
+            <Ionicons name="add" size={16} color={COLORS.white} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => removeFromCart(item.id)}
+          >
+            <Ionicons name="trash" size={16} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
       </View>
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => addToCart(item)}
-      >
-        <Ionicons name="add" size={20} color={COLORS.white} />
-        <Text style={styles.addButtonText}>Tambah</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderCartItem = ({ item }) => (
-    <View style={styles.cartItem}>
-      <View style={styles.cartItemInfo}>
-        <Text style={styles.cartItemName}>{item.name}</Text>
-        <Text style={styles.cartItemPrice}>{formatCurrency(item.price)}</Text>
-      </View>
-      <View style={styles.cartItemActions}>
-        <TouchableOpacity
-          style={styles.quantityButton}
-          onPress={() => updateQuantity(item.id, item.quantity - 1)}
-        >
-          <Ionicons name="remove" size={16} color={COLORS.white} />
-        </TouchableOpacity>
-        <Text style={styles.quantityText}>{item.quantity}</Text>
-        <TouchableOpacity
-          style={styles.quantityButton}
-          onPress={() => updateQuantity(item.id, item.quantity + 1)}
-        >
-          <Ionicons name="add" size={16} color={COLORS.white} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => removeFromCart(item.id)}
-        >
-          <Ionicons name="trash" size={16} color={COLORS.white} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -548,9 +538,7 @@ export default function NewTransactionScreen({ navigation }) {
             <TextInput
               style={styles.input}
               value={customerData.customer_name}
-              onChangeText={(text) =>
-                setCustomerData({ ...customerData, customer_name: text })
-              }
+              onChangeText={(text) => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'customer_name', value: text })}
               placeholder="Masukkan nama pelanggan"
               placeholderTextColor={COLORS.davysGray}
             />
@@ -559,9 +547,7 @@ export default function NewTransactionScreen({ navigation }) {
             <TextInput
               style={styles.input}
               value={customerData.phone_number}
-              onChangeText={(text) =>
-                setCustomerData({ ...customerData, phone_number: text })
-              }
+              onChangeText={(text) => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'phone_number', value: text })}
               placeholder="Masukkan nomor telepon"
               placeholderTextColor={COLORS.davysGray}
               keyboardType="phone-pad"
@@ -574,18 +560,14 @@ export default function NewTransactionScreen({ navigation }) {
                   key={method}
                   style={[
                     styles.paymentMethodButton,
-                    customerData.payment_method === method &&
-                      styles.paymentMethodActive,
+                    customerData.payment_method === method && styles.paymentMethodActive,
                   ]}
-                  onPress={() =>
-                    setCustomerData({ ...customerData, payment_method: method })
-                  }
+                  onPress={() => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'payment_method', value: method })}
                 >
                   <Text
                     style={[
                       styles.paymentMethodText,
-                      customerData.payment_method === method &&
-                        styles.paymentMethodTextActive,
+                      customerData.payment_method === method && styles.paymentMethodTextActive,
                     ]}
                   >
                     {method.charAt(0).toUpperCase() + method.slice(1)}
@@ -598,9 +580,7 @@ export default function NewTransactionScreen({ navigation }) {
             <TextInput
               style={[styles.input, styles.textArea]}
               value={customerData.notes}
-              onChangeText={(text) =>
-                setCustomerData({ ...customerData, notes: text })
-              }
+              onChangeText={(text) => dispatchCustomer({ type: 'UPDATE_FIELD', field: 'notes', value: text })}
               placeholder="Catatan tambahan (opsional)"
               placeholderTextColor={COLORS.davysGray}
               multiline
@@ -648,19 +628,19 @@ export default function NewTransactionScreen({ navigation }) {
                 style={styles.discountInput}
                 value={discount.toString()}
                 onChangeText={(text) => setDiscount(parseFloat(text) || 0)}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholder="0"
                 placeholderTextColor={COLORS.davysGray}
               />
             </View>
 
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Harga Baru</Text>
+              <Text style={styles.summaryLabel}>Harga Baru (opsional)</Text>
               <TextInput
                 style={styles.discountInput}
                 value={newPrice}
                 onChangeText={setNewPrice}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholder="Rp"
                 placeholderTextColor={COLORS.davysGray}
               />
@@ -750,11 +730,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 40,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...cardShadow,
   },
   scanButton: {
     backgroundColor: COLORS.pumpkin,
@@ -786,11 +762,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...cardShadow,
   },
   productInfo: {
     flex: 1,
@@ -830,11 +802,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...cardShadow,
   },
   label: {
     fontSize: 14,
@@ -887,11 +855,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 40,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...cardShadow,
   },
   emptyText: {
     fontSize: 16,
@@ -904,11 +868,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...cardShadow,
   },
   cartItemInfo: {
     marginBottom: 10,
@@ -957,11 +917,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...cardShadow,
   },
   summaryRow: {
     flexDirection: 'row',
