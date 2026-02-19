@@ -130,7 +130,7 @@ const Login = ({ navigation, onLoginSuccess }) => {
               onPress={handleForgotPassword}
               disabled={isLoading}
             >
-              <Text style={styles.forgotPasswordText}>Lupa Password?</Text>
+              <Text style={styles.forgotPasswordText}>................</Text>
             </TouchableOpacity>
           </View>
 

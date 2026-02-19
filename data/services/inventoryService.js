@@ -1,4 +1,4 @@
-// data/services/inventoryService.js - FIXED
+// data/services/inventoryService.js - UPDATED WITH STOCK OPNAME HELPERS
 // ==================== INVENTORY/PRODUCTS SERVICE ====================
 
 import apiClient, { formatError, formatResponse } from '../api';
@@ -190,17 +190,75 @@ export const deleteProduct = async (id) => {
 // ==================== PRODUCT UNIT ====================
 
 /**
- * Get product unit detail (untuk QR scan)
+ * Get product unit detail (untuk QR scan) - ENHANCED for Stock Opname
  * @param {number} productId - Product ID
  * @param {string} unitCode - Unit code
  * @returns {Promise<Object>} Unit detail
  */
 export const getProductUnit = async (productId, unitCode) => {
   try {
+    console.log(`[InventoryService] Getting product unit: ProductID=${productId}, UnitCode=${unitCode}`);
     const response = await apiClient.get(API_ENDPOINTS.PRODUCT_UNIT(productId, unitCode));
     return formatResponse(response);
   } catch (error) {
     console.error('[InventoryService] Get product unit error:', error);
+    throw formatError(error);
+  }
+};
+
+/**
+ * ✅ NEW: Get product by barcode/QR code (untuk Stock Opname)
+ * Alternative method jika getProductUnit gagal
+ * @param {string} qrCode - QR Code value
+ * @returns {Promise<Object>} Product detail
+ */
+export const getProductByQRCode = async (qrCode) => {
+  try {
+    console.log(`[InventoryService] Searching product by QR: ${qrCode}`);
+    
+    // Coba search dulu di products
+    const response = await apiClient.get(API_ENDPOINTS.PRODUCTS, {
+      params: {
+        search: qrCode,
+        per_page: 1,
+      },
+    });
+    
+    const result = formatResponse(response);
+    
+    if (result.success && result.data.products && result.data.products.length > 0) {
+      const product = result.data.products[0];
+      
+      // Cari unit yang sesuai dengan QR code
+      let matchingUnit = null;
+      if (product.units && product.units.length > 0) {
+        matchingUnit = product.units.find(unit => unit.unitCode === qrCode);
+        if (!matchingUnit) {
+          matchingUnit = product.units[0]; // Fallback ke unit pertama
+        }
+      }
+      
+      return {
+        success: true,
+        data: {
+          id: product.id,
+          productId: product.id,
+          unitCode: matchingUnit?.unitCode || qrCode,
+          name: product.name || product.model,
+          brand: product.brand,
+          model: product.model,
+          size: matchingUnit?.size || product.size,
+          color: product.color,
+          stock: matchingUnit?.stock || product.stock || 0,
+          sellingPrice: product.sellingPrice || product.selling_price,
+          discountPrice: product.discountPrice || product.discount_price,
+        },
+      };
+    }
+    
+    throw new Error('Produk tidak ditemukan');
+  } catch (error) {
+    console.error('[InventoryService] Get product by QR code error:', error);
     throw formatError(error);
   }
 };
@@ -222,17 +280,20 @@ export const getStockOpname = async () => {
 };
 
 /**
- * Update physical stock
+ * Update physical stock - ENHANCED with better error handling
  * @param {number} id - Product ID
  * @param {number} physicalStock - Physical stock count
  * @returns {Promise<Object>} Response
  */
 export const updatePhysicalStock = async (id, physicalStock) => {
   try {
+    console.log(`[InventoryService] Updating physical stock for product ${id}: ${physicalStock}`);
+    
     const response = await apiClient.post(
       API_ENDPOINTS.UPDATE_PHYSICAL_STOCK(id),
       { physical_stock: physicalStock }
     );
+    
     return formatResponse(response);
   } catch (error) {
     console.error('[InventoryService] Update physical stock error:', error);
@@ -330,6 +391,8 @@ export const searchProductByCode = async (code) => {
   }
 };
 
+// ==================== EXPORTS ====================
+
 export default {
   getProducts,
   getInventoryStatistics,
@@ -338,6 +401,7 @@ export default {
   updateProduct,
   deleteProduct,
   getProductUnit,
+  getProductByQRCode, // ✅ NEW
   getStockOpname,
   updatePhysicalStock,
   saveStockOpnameReport,

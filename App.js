@@ -26,6 +26,7 @@ import InventoryScreen from "./pages/InventoryScreen.js";
 import TransactionScreen from "./pages/TransactionScreen.js";
 import SalesReportScreen from "./pages/SalesReportScreen.js";
 import NewTransactionScreen from "./pages/NewTransactionScreen.js";
+import StockOpnameScreen from "./pages/Stockopnamescreen.js";
 
 const Stack = createNativeStackNavigator();
 const BottomTab = createBottomTabNavigator();
@@ -233,6 +234,13 @@ export default function App() {
                 headerShown: false,
                 presentation: 'card',
               }}
+            />
+
+            {/* Stock Opname Screen */}
+            <Stack.Screen 
+              name="StockOpname" 
+              component={StockOpnameScreen}
+              options={{ headerShown: false }}
             />
 
             {/* Change Password Screen */}

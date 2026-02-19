@@ -13,7 +13,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { getTransactions } from '../keduitan/transactions';
+
+// ✅ FIX: Import dari data/services bukan dari keduitan/transactions
+import { getTransactions } from '../data/services/transactionService';
 
 // Color Palette
 const COLORS = {
@@ -36,24 +38,15 @@ export default function SalesReportScreen({ navigation }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [paymentType, setPaymentType] = useState('');
-  
-  // Auto refresh states
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
-
-  const WIB_OFFSET = 7 * 60 * 60 * 1000;
 
   // Auto refresh effect - refresh every 30 seconds
   useEffect(() => {
-    if (!autoRefresh) return;
-
     const interval = setInterval(() => {
       console.log('Auto refreshing data...');
-      fetchTransactions(true); // silent refresh
-    }, 30000); // 30 seconds
-
+      fetchTransactions();
+    }, 30000);
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, []);
 
   // Focus effect - refresh when screen comes into focus
   useEffect(() => {
@@ -61,7 +54,6 @@ export default function SalesReportScreen({ navigation }) {
       console.log('Screen focused - refreshing data...');
       fetchTransactions();
     });
-
     return unsubscribe;
   }, [navigation]);
 
@@ -70,7 +62,7 @@ export default function SalesReportScreen({ navigation }) {
   }, []);
 
   useEffect(() => {
-    filterTransactions();
+    applyFilter();
   }, [transactions, reportType, selectedDate, paymentType, searchQuery]);
 
   const fetchTransactions = async () => {
@@ -81,16 +73,14 @@ export default function SalesReportScreen({ navigation }) {
       console.log('API Result:', result);
 
       if (result.success) {
-        // Handle nested data structure
-        const transactionsData = 
-          result.data?.data?.transactions || 
-          result.data?.transactions || 
-          result.data || 
-          [];
-        
-        console.log('Transactions Data:', transactionsData);
+        // ✅ FIX: Handle berbagai kemungkinan struktur data dari API
+        const transactionsData =
+          result.data?.data?.transactions ||
+          result.data?.transactions ||
+          result.data?.data ||
+          (Array.isArray(result.data) ? result.data : []);
+
         console.log('Transactions Count:', transactionsData.length);
-        
         setTransactions(transactionsData);
         setFilteredTransactions(transactionsData);
       } else {
@@ -109,7 +99,8 @@ export default function SalesReportScreen({ navigation }) {
     }
   };
 
-  const filterTransactions = () => {
+  // ✅ FIX: Rename agar tidak konflik dengan nama import filterTransactions
+  const applyFilter = () => {
     if (!Array.isArray(transactions)) {
       setFilteredTransactions([]);
       return;
@@ -134,12 +125,9 @@ export default function SalesReportScreen({ navigation }) {
       filtered = filtered.filter((t) => {
         const method = t.payment_method?.toLowerCase() || '';
         const selectedMethod = paymentType.toLowerCase();
-        
-        // Handle "Transfer Bank" matching
         if (selectedMethod === 'transfer bank' || selectedMethod === 'transfer') {
           return method === 'transfer' || method === 'transfer bank';
         }
-        
         return method === selectedMethod;
       });
     }
@@ -148,46 +136,33 @@ export default function SalesReportScreen({ navigation }) {
     if (selectedDate) {
       filtered = filtered.filter((t) => {
         if (!t.created_at) return false;
-        
-        // Parse transaction date (UTC from API)
+
         const transactionDate = new Date(t.created_at);
-        
-        // Get selected date components (local timezone)
         const selectedYear = selectedDate.getFullYear();
         const selectedMonth = selectedDate.getMonth();
         const selectedDay = selectedDate.getDate();
-        
-        // Get transaction date components (local timezone)
         const transYear = transactionDate.getFullYear();
         const transMonth = transactionDate.getMonth();
         const transDay = transactionDate.getDate();
 
         if (reportType === 'harian') {
-          // Compare year, month, and day
           return (
             transYear === selectedYear &&
             transMonth === selectedMonth &&
             transDay === selectedDay
           );
         } else if (reportType === 'mingguan') {
-          // Calculate week boundaries
           const weekStart = new Date(selectedDate);
           weekStart.setHours(0, 0, 0, 0);
           weekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
-          
           const weekEnd = new Date(weekStart);
           weekEnd.setHours(23, 59, 59, 999);
           weekEnd.setDate(weekStart.getDate() + 6);
-          
-          // Normalize transaction date for comparison
           const transDateNormalized = new Date(transYear, transMonth, transDay);
-          
           return transDateNormalized >= weekStart && transDateNormalized <= weekEnd;
         } else if (reportType === 'bulanan') {
-          // Compare year and month only
           return transYear === selectedYear && transMonth === selectedMonth;
         } else if (reportType === 'tahunan') {
-          // Compare year only
           return transYear === selectedYear;
         }
         return true;
@@ -195,9 +170,6 @@ export default function SalesReportScreen({ navigation }) {
     }
 
     console.log('Filtered count:', filtered.length);
-    console.log('Report type:', reportType);
-    console.log('Selected date:', selectedDate.toISOString());
-    
     setFilteredTransactions(filtered);
   };
 
@@ -222,6 +194,8 @@ export default function SalesReportScreen({ navigation }) {
 
   const formatInvoiceNumber = (date) => {
     if (!date) return '-';
+    // ✅ FIX: Gunakan WIB offset lokal
+    const WIB_OFFSET = 7 * 60 * 60 * 1000;
     const wibDate = new Date(new Date(date).getTime() + WIB_OFFSET);
     const day = wibDate.getUTCDate().toString().padStart(2, '0');
     const month = (wibDate.getUTCMonth() + 1).toString().padStart(2, '0');
@@ -238,48 +212,27 @@ export default function SalesReportScreen({ navigation }) {
 
   const goToPreviousDate = () => {
     const newDate = new Date(selectedDate);
-    if (reportType === 'harian') {
-      newDate.setDate(newDate.getDate() - 1);
-    } else if (reportType === 'mingguan') {
-      newDate.setDate(newDate.getDate() - 7);
-    } else if (reportType === 'bulanan') {
-      newDate.setMonth(newDate.getMonth() - 1);
-    } else if (reportType === 'tahunan') {
-      newDate.setFullYear(newDate.getFullYear() - 1);
-    }
+    if (reportType === 'harian') newDate.setDate(newDate.getDate() - 1);
+    else if (reportType === 'mingguan') newDate.setDate(newDate.getDate() - 7);
+    else if (reportType === 'bulanan') newDate.setMonth(newDate.getMonth() - 1);
+    else if (reportType === 'tahunan') newDate.setFullYear(newDate.getFullYear() - 1);
     setSelectedDate(newDate);
   };
 
   const goToNextDate = () => {
     const newDate = new Date(selectedDate);
     const today = new Date();
-
-    if (reportType === 'harian') {
-      newDate.setDate(newDate.getDate() + 1);
-    } else if (reportType === 'mingguan') {
-      newDate.setDate(newDate.getDate() + 7);
-    } else if (reportType === 'bulanan') {
-      newDate.setMonth(newDate.getMonth() + 1);
-    } else if (reportType === 'tahunan') {
-      newDate.setFullYear(newDate.getFullYear() + 1);
-    }
-
-    if (newDate <= today) {
-      setSelectedDate(newDate);
-    }
+    if (reportType === 'harian') newDate.setDate(newDate.getDate() + 1);
+    else if (reportType === 'mingguan') newDate.setDate(newDate.getDate() + 7);
+    else if (reportType === 'bulanan') newDate.setMonth(newDate.getMonth() + 1);
+    else if (reportType === 'tahunan') newDate.setFullYear(newDate.getFullYear() + 1);
+    if (newDate <= today) setSelectedDate(newDate);
   };
 
-  const goToToday = () => {
-    setSelectedDate(new Date());
-  };
+  const goToToday = () => setSelectedDate(new Date());
 
   const getDateRangeText = () => {
-    const options = {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    };
-
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
     if (reportType === 'harian') {
       return selectedDate.toLocaleDateString('id-ID', options);
     } else if (reportType === 'mingguan') {
@@ -287,20 +240,11 @@ export default function SalesReportScreen({ navigation }) {
       weekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
-      
-      // Format with proper date formatting
-      const startStr = weekStart.toLocaleDateString('id-ID', { 
-        day: 'numeric', 
-        month: 'short' 
-      });
+      const startStr = weekStart.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
       const endStr = weekEnd.toLocaleDateString('id-ID', options);
-      
       return `${startStr} - ${endStr}`;
     } else if (reportType === 'bulanan') {
-      return selectedDate.toLocaleDateString('id-ID', {
-        year: 'numeric',
-        month: 'long',
-      });
+      return selectedDate.toLocaleDateString('id-ID', { year: 'numeric', month: 'long' });
     } else if (reportType === 'tahunan') {
       return selectedDate.getFullYear().toString();
     }
@@ -311,8 +255,7 @@ export default function SalesReportScreen({ navigation }) {
     const method = paymentMethod?.toLowerCase() || '';
     if (method === 'cash') return styles.paymentCash;
     if (method === 'qris') return styles.paymentQris;
-    if (method.includes('transfer') || method === 'card')
-      return styles.paymentTransfer;
+    if (method.includes('transfer') || method === 'card') return styles.paymentTransfer;
     return styles.paymentCash;
   };
 
@@ -320,22 +263,17 @@ export default function SalesReportScreen({ navigation }) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={COLORS.pumpkin} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Laporan Transaksi</Text>
       </View>
 
       <ScrollView>
-        {/* Rentang Waktu Section */}
+        {/* Filter Section */}
         <View style={styles.filterCard}>
           <Text style={styles.filterTitle}>Rentang waktu</Text>
-
           <View style={styles.filterRow}>
-            {/* Tipe Laporan */}
             <View style={styles.filterItem}>
               <Text style={styles.filterLabel}>Tipe Laporan</Text>
               <View style={styles.pickerContainer}>
@@ -352,52 +290,38 @@ export default function SalesReportScreen({ navigation }) {
               </View>
             </View>
 
-            {/* Tanggal */}
             <View style={styles.filterItem}>
               <Text style={styles.filterLabel}>Tanggal</Text>
-
-              {/* Date Navigation Buttons */}
               <View style={styles.dateNavigationContainer}>
-                <TouchableOpacity
-                  onPress={goToPreviousDate}
-                  style={styles.dateNavButton}
-                >
+                <TouchableOpacity onPress={goToPreviousDate} style={styles.dateNavButton}>
                   <Text style={styles.dateNavButtonText}>◀</Text>
                 </TouchableOpacity>
-
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
                   style={styles.dateButtonExpanded}
                 >
                   <Text style={styles.dateButtonText}>{getDateRangeText()}</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={goToNextDate}
-                  style={styles.dateNavButton}
-                >
+                <TouchableOpacity onPress={goToNextDate} style={styles.dateNavButton}>
                   <Text style={styles.dateNavButtonText}>▶</Text>
                 </TouchableOpacity>
               </View>
-
-              {/* Today Button */}
               <TouchableOpacity onPress={goToToday} style={styles.todayButton}>
                 <Text style={styles.todayButtonText}>Hari Ini</Text>
               </TouchableOpacity>
-
               {showDatePicker && (
                 <DateTimePicker
                   value={selectedDate}
                   mode="date"
                   display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   onChange={onDateChange}
-                  minimumDate={new Date(2025, 0, 1)}
-                  maximumDate={new Date(2025, 11, 31)}
+                  minimumDate={new Date(2024, 0, 1)}
+                  // ✅ FIX: maximumDate diset ke hari ini, bukan hardcode 2025
+                  maximumDate={new Date()}
                 />
               )}
             </View>
 
-            {/* Jenis Pembayaran */}
             <View style={styles.filterItem}>
               <Text style={styles.filterLabel}>Jenis Pembayaran</Text>
               <View style={styles.pickerContainer}>
@@ -410,11 +334,11 @@ export default function SalesReportScreen({ navigation }) {
                   <Picker.Item label="Cash" value="cash" />
                   <Picker.Item label="QRIS" value="qris" />
                   <Picker.Item label="Transfer" value="Transfer Bank" />
+                  <Picker.Item label="Debit" value="debit" />
                 </Picker>
               </View>
             </View>
 
-            {/* Search */}
             <View style={styles.filterItem}>
               <Text style={styles.filterLabel}>Cari Transaksi</Text>
               <TextInput
@@ -432,33 +356,21 @@ export default function SalesReportScreen({ navigation }) {
         <View style={styles.summarySection}>
           <View style={styles.summaryHeader}>
             <Text style={styles.summaryHeaderTitle}>Ringkasan</Text>
-            <TouchableOpacity
-              style={styles.refreshIconButton}
-              onPress={() => {
-                console.log('Refreshing data...');
-                fetchTransactions();
-              }}
-            >
+            <TouchableOpacity style={styles.refreshIconButton} onPress={fetchTransactions}>
               <Ionicons name="refresh" size={20} color={COLORS.pumpkin} />
             </TouchableOpacity>
           </View>
-
           <View style={styles.summaryContainer}>
             <View style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>Total Transaksi</Text>
-              <Text style={styles.summaryValue}>
-                {filteredTransactions?.length || 0}
-              </Text>
+              <Text style={styles.summaryValue}>{filteredTransactions?.length || 0}</Text>
             </View>
             <View style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>Total Pendapatan</Text>
               <Text style={styles.summaryValue}>
                 {formatCurrency(
                   Array.isArray(filteredTransactions)
-                    ? filteredTransactions.reduce(
-                        (sum, t) => sum + (t.final_amount || 0),
-                        0
-                      )
+                    ? filteredTransactions.reduce((sum, t) => sum + (t.final_amount || 0), 0)
                     : 0
                 )}
               </Text>
@@ -466,26 +378,19 @@ export default function SalesReportScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Laporan Section */}
+        {/* Laporan Table */}
         <View style={styles.reportCard}>
           <View style={styles.reportHeader}>
             <Text style={styles.reportTitle}>Laporan</Text>
           </View>
-
-          {/* Table */}
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={COLORS.pumpkin} />
               <Text style={styles.loadingText}>Memuat data...</Text>
             </View>
-          ) : !Array.isArray(filteredTransactions) ||
-            filteredTransactions.length === 0 ? (
+          ) : !Array.isArray(filteredTransactions) || filteredTransactions.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Ionicons
-                name="document-outline"
-                size={64}
-                color={COLORS.davysGray}
-              />
+              <Ionicons name="document-outline" size={64} color={COLORS.davysGray} />
               <Text style={styles.emptyText}>Tidak ada data transaksi</Text>
               <Text style={styles.emptySubText}>
                 untuk periode {reportType} yang dipilih
@@ -494,82 +399,53 @@ export default function SalesReportScreen({ navigation }) {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={true}>
               <View style={styles.tableContainer}>
-                {/* Table Header */}
                 <View style={styles.tableHeader}>
                   <Text style={[styles.tableHeaderCell, styles.colNo]}>NO</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colInvoice]}>
-                    No pesanan
-                  </Text>
-                  <Text style={[styles.tableHeaderCell, styles.colDate]}>
-                    Tanggal pesanan
-                  </Text>
-                  <Text style={[styles.tableHeaderCell, styles.colProduct]}>
-                    Nama Produk
-                  </Text>
-                  <Text style={[styles.tableHeaderCell, styles.colPrice]}>
-                    Harga
-                  </Text>
-                  <Text style={[styles.tableHeaderCell, styles.colPayment]}>
-                    Jenis pembayaran
-                  </Text>
+                  <Text style={[styles.tableHeaderCell, styles.colInvoice]}>No pesanan</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colDate]}>Tanggal pesanan</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colProduct]}>Nama Produk</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colPrice]}>Harga</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colPayment]}>Jenis pembayaran</Text>
                 </View>
-
-                {/* Table Body */}
                 <ScrollView style={styles.tableBody}>
-                  {Array.isArray(filteredTransactions) &&
-                    filteredTransactions.map((transaction, index) => (
-                      <View
-                        key={transaction.id || index}
-                        style={[
-                          styles.tableRow,
-                          index % 2 === 0
-                            ? styles.tableRowEven
-                            : styles.tableRowOdd,
-                        ]}
-                      >
-                        <Text style={[styles.tableCell, styles.colNo]}>
-                          {index + 1}
-                        </Text>
-                        <Text style={[styles.tableCell, styles.colInvoice]}>
-                          {formatInvoiceNumber(transaction.created_at)}
-                        </Text>
-                        <Text style={[styles.tableCell, styles.colDate]}>
-                          {formatDate(transaction.created_at)}
-                        </Text>
-                        <View style={[styles.tableCell, styles.colProduct]}>
-                          {transaction.items?.map((item, idx) => (
-                            <Text key={idx} style={styles.productText}>
-                              {item.product_name}
-                              {item.size ? ` (${item.size})` : ''}
-                              {item.color ? ` - ${item.color}` : ''}
-                            </Text>
-                          ))}
-                        </View>
-                        <Text
-                          style={[
-                            styles.tableCell,
-                            styles.colPrice,
-                            styles.priceText,
-                          ]}
+                  {filteredTransactions.map((transaction, index) => (
+                    <View
+                      key={transaction.id || index}
+                      style={[
+                        styles.tableRow,
+                        index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                      ]}
+                    >
+                      <Text style={[styles.tableCell, styles.colNo]}>{index + 1}</Text>
+                      <Text style={[styles.tableCell, styles.colInvoice]}>
+                        {formatInvoiceNumber(transaction.created_at)}
+                      </Text>
+                      <Text style={[styles.tableCell, styles.colDate]}>
+                        {formatDate(transaction.created_at)}
+                      </Text>
+                      <View style={[styles.tableCell, styles.colProduct]}>
+                        {transaction.items?.map((item, idx) => (
+                          <Text key={idx} style={styles.productText}>
+                            {item.product_name}
+                            {item.size ? ` (${item.size})` : ''}
+                            {item.color ? ` - ${item.color}` : ''}
+                          </Text>
+                        ))}
+                      </View>
+                      <Text style={[styles.tableCell, styles.colPrice, styles.priceText]}>
+                        {formatCurrency(transaction.final_amount || 0)}
+                      </Text>
+                      <View style={[styles.tableCell, styles.colPayment]}>
+                        <View
+                          style={[styles.paymentBadge, getPaymentBadgeStyle(transaction.payment_method)]}
                         >
-                          {formatCurrency(transaction.final_amount || 0)}
-                        </Text>
-                        <View style={[styles.tableCell, styles.colPayment]}>
-                          <View
-                            style={[
-                              styles.paymentBadge,
-                              getPaymentBadgeStyle(transaction.payment_method),
-                            ]}
-                          >
-                            <Text style={styles.paymentBadgeText}>
-                              {(
-                                transaction.payment_method || 'Cash'
-                              ).toUpperCase()}
-                            </Text>
-                          </View>
+                          <Text style={styles.paymentBadgeText}>
+                            {(transaction.payment_method || 'Cash').toUpperCase()}
+                          </Text>
                         </View>
                       </View>
-                    ))}
+                    </View>
+                  ))}
                 </ScrollView>
               </View>
             </ScrollView>
@@ -581,295 +457,99 @@ export default function SalesReportScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.linen,
-  },
+  container: { flex: 1, backgroundColor: COLORS.linen },
   header: {
     backgroundColor: COLORS.jet,
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+    paddingTop: 50, paddingBottom: 20, paddingHorizontal: 20,
+    flexDirection: 'row', alignItems: 'center',
+    borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
   },
-  backButton: {
-    marginRight: 15,
-  },
-  headerTitle: {
-    color: COLORS.pumpkin,
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
+  backButton: { marginRight: 15 },
+  headerTitle: { color: COLORS.pumpkin, fontSize: 24, fontWeight: 'bold' },
   filterCard: {
-    backgroundColor: COLORS.white,
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: COLORS.white, margin: 16, padding: 20,
+    borderRadius: 12, elevation: 3,
   },
-  filterTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.jet,
-    marginBottom: 16,
-  },
-  filterRow: {
-    gap: 12,
-  },
-  filterItem: {
-    marginBottom: 12,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.jet,
-    marginBottom: 8,
-  },
+  filterTitle: { fontSize: 18, fontWeight: '600', color: COLORS.jet, marginBottom: 16 },
+  filterRow: { gap: 12 },
+  filterItem: { marginBottom: 12 },
+  filterLabel: { fontSize: 14, fontWeight: '500', color: COLORS.jet, marginBottom: 8 },
   pickerContainer: {
-    borderWidth: 2,
-    borderColor: COLORS.davysGray,
-    borderRadius: 8,
-    backgroundColor: COLORS.white,
+    borderWidth: 2, borderColor: COLORS.davysGray,
+    borderRadius: 8, backgroundColor: COLORS.white,
   },
-  picker: {
-    height: 48,
-    color: COLORS.jet,
-  },
+  picker: { height: 48, color: COLORS.jet },
   dateButtonExpanded: {
-    flex: 1,
-    borderWidth: 2,
-    borderColor: COLORS.davysGray,
-    borderRadius: 8,
-    padding: 14,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1, borderWidth: 2, borderColor: COLORS.davysGray,
+    borderRadius: 8, padding: 14, backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
   },
-  dateButtonText: {
-    color: COLORS.jet,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  dateNavigationContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
+  dateButtonText: { color: COLORS.jet, fontSize: 14, fontWeight: '500' },
+  dateNavigationContainer: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   dateNavButton: {
-    width: 50,
-    height: 48,
-    borderWidth: 2,
-    borderColor: COLORS.davysGray,
-    borderRadius: 8,
-    backgroundColor: COLORS.pumpkin,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 50, height: 48, borderWidth: 2, borderColor: COLORS.davysGray,
+    borderRadius: 8, backgroundColor: COLORS.pumpkin,
+    alignItems: 'center', justifyContent: 'center',
   },
-  dateNavButtonText: {
-    color: COLORS.white,
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
+  dateNavButtonText: { color: COLORS.white, fontSize: 20, fontWeight: 'bold' },
   todayButton: {
-    marginTop: 8,
-    borderWidth: 2,
-    borderColor: COLORS.pumpkin,
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
+    marginTop: 8, borderWidth: 2, borderColor: COLORS.pumpkin,
+    borderRadius: 8, padding: 10, backgroundColor: COLORS.white, alignItems: 'center',
   },
-  todayButtonText: {
-    color: COLORS.pumpkin,
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  todayButtonText: { color: COLORS.pumpkin, fontSize: 13, fontWeight: '600' },
   searchInput: {
-    borderWidth: 2,
-    borderColor: COLORS.davysGray,
-    borderRadius: 8,
-    padding: 14,
-    backgroundColor: COLORS.white,
-    color: COLORS.jet,
-    fontSize: 14,
+    borderWidth: 2, borderColor: COLORS.davysGray,
+    borderRadius: 8, padding: 14, backgroundColor: COLORS.white,
+    color: COLORS.jet, fontSize: 14,
   },
-  summarySection: {
-    marginBottom: 16,
-  },
+  summarySection: { marginBottom: 16 },
   summaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingHorizontal: 16, marginBottom: 12,
   },
-  summaryHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.jet,
-  },
-  refreshIconButton: {
-    padding: 8,
-  },
-  summaryContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 12,
-  },
+  summaryHeaderTitle: { fontSize: 18, fontWeight: '600', color: COLORS.jet },
+  refreshIconButton: { padding: 8 },
+  summaryContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 12 },
   summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    flex: 1, backgroundColor: COLORS.white, padding: 20,
+    borderRadius: 12, elevation: 3,
   },
-  summaryLabel: {
-    fontSize: 14,
-    color: COLORS.davysGray,
-    marginBottom: 8,
-  },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.pumpkin,
-  },
+  summaryLabel: { fontSize: 14, color: COLORS.davysGray, marginBottom: 8 },
+  summaryValue: { fontSize: 20, fontWeight: 'bold', color: COLORS.pumpkin },
   reportCard: {
-    backgroundColor: COLORS.white,
-    margin: 16,
-    marginTop: 0,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: COLORS.white, margin: 16, marginTop: 0,
+    borderRadius: 12, overflow: 'hidden', elevation: 3,
   },
-  reportHeader: {
-    backgroundColor: COLORS.jet,
-    padding: 20,
-  },
-  reportTitle: {
-    color: COLORS.white,
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: COLORS.davysGray,
-    fontSize: 14,
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    marginTop: 15,
-    color: COLORS.davysGray,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  emptySubText: {
-    marginTop: 5,
-    color: COLORS.davysGray,
-    fontSize: 12,
-  },
-  tableContainer: {
-    padding: 15,
-  },
+  reportHeader: { backgroundColor: COLORS.jet, padding: 20 },
+  reportTitle: { color: COLORS.white, fontSize: 20, fontWeight: 'bold' },
+  loadingContainer: { padding: 40, alignItems: 'center' },
+  loadingText: { marginTop: 12, color: COLORS.davysGray, fontSize: 14 },
+  emptyContainer: { padding: 40, alignItems: 'center' },
+  emptyText: { marginTop: 15, color: COLORS.davysGray, fontSize: 14, fontWeight: '500' },
+  emptySubText: { marginTop: 5, color: COLORS.davysGray, fontSize: 12 },
+  tableContainer: { padding: 15 },
   tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.davysGray,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.jet,
+    flexDirection: 'row', backgroundColor: COLORS.davysGray,
+    borderTopLeftRadius: 8, borderTopRightRadius: 8,
+    borderBottomWidth: 2, borderBottomColor: COLORS.jet,
   },
-  tableHeaderCell: {
-    padding: 12,
-    color: COLORS.white,
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  tableBody: {
-    maxHeight: 400,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.davysGray,
-  },
-  tableRowEven: {
-    backgroundColor: COLORS.linen,
-  },
-  tableRowOdd: {
-    backgroundColor: COLORS.white,
-  },
-  tableCell: {
-    padding: 12,
-    color: COLORS.jet,
-    fontSize: 12,
-  },
-  colNo: {
-    width: 50,
-  },
-  colInvoice: {
-    width: 150,
-  },
-  colDate: {
-    width: 200,
-  },
-  colProduct: {
-    width: 250,
-  },
-  colPrice: {
-    width: 130,
-  },
-  colPayment: {
-    width: 150,
-  },
-  productText: {
-    fontSize: 12,
-    color: COLORS.jet,
-    marginBottom: 4,
-  },
-  priceText: {
-    color: COLORS.pumpkin,
-    fontWeight: '600',
-  },
-  paymentBadge: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  paymentCash: {
-    backgroundColor: COLORS.goldenGate,
-  },
-  paymentQris: {
-    backgroundColor: COLORS.pumpkin,
-  },
-  paymentTransfer: {
-    backgroundColor: COLORS.davysGray,
-  },
-  paymentBadgeText: {
-    color: COLORS.white,
-    fontSize: 11,
-    fontWeight: '600',
-  },
+  tableHeaderCell: { padding: 12, color: COLORS.white, fontWeight: '600', fontSize: 13 },
+  tableBody: { maxHeight: 400 },
+  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.davysGray },
+  tableRowEven: { backgroundColor: COLORS.linen },
+  tableRowOdd: { backgroundColor: COLORS.white },
+  tableCell: { padding: 12, color: COLORS.jet, fontSize: 12 },
+  colNo: { width: 50 },
+  colInvoice: { width: 150 },
+  colDate: { width: 200 },
+  colProduct: { width: 250 },
+  colPrice: { width: 130 },
+  colPayment: { width: 150 },
+  productText: { fontSize: 12, color: COLORS.jet, marginBottom: 4 },
+  priceText: { color: COLORS.pumpkin, fontWeight: '600' },
+  paymentBadge: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, alignSelf: 'flex-start' },
+  paymentCash: { backgroundColor: COLORS.goldenGate },
+  paymentQris: { backgroundColor: COLORS.pumpkin },
+  paymentTransfer: { backgroundColor: COLORS.davysGray },
+  paymentBadgeText: { color: COLORS.white, fontSize: 11, fontWeight: '600' },
 });

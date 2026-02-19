@@ -67,7 +67,7 @@ export const REQUEST_TIMEOUT = 10000; // 10 seconds
 // Pagination
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
-  DEFAULT_PER_PAGE: 100,
+  DEFAULT_PER_PAGE: 9999, // Fetch semua produk (set ke angka besar untuk unlimited)
 };
 
 // Date Format

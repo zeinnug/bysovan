@@ -29,7 +29,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Aplikasi memerlukan akses kamera untuk memindai QR code produk"
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for scanning QR codes."
         }
       ]
     ]
