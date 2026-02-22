@@ -1,30 +1,18 @@
+// pages/SalesReportScreen.js - UPDATED dengan tombol Cetak Struk
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  ActivityIndicator,
-  TouchableOpacity,
-  Platform,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TextInput,
+  ActivityIndicator, TouchableOpacity, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-// ✅ FIX: Import dari data/services bukan dari keduitan/transactions
 import { getTransactions } from '../data/services/transactionService';
+import StrukModal, { buildReceiptData, getReceiptByInvoice } from '../keduitan/Struk';
 
-// Color Palette
 const COLORS = {
-  jet: '#292929',
-  davysGray: '#585757',
-  linen: '#F5ECE4',
-  pumpkin: '#FC6A0A',
-  goldenGate: '#E74504',
-  white: '#FFFFFF',
+  jet: '#292929', davysGray: '#585757', linen: '#F5ECE4',
+  pumpkin: '#FC6A0A', goldenGate: '#E74504', white: '#FFFFFF',
 };
 
 export default function SalesReportScreen({ navigation }) {
@@ -32,65 +20,47 @@ export default function SalesReportScreen({ navigation }) {
   const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Filter states
   const [reportType, setReportType] = useState('harian');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [paymentType, setPaymentType] = useState('');
 
-  // Auto refresh effect - refresh every 30 seconds
+  // ── Struk state ──────────────────────────────────────────────────────────
+  const [showStruk, setShowStruk] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [loadingReceipt, setLoadingReceipt] = useState(false);
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      console.log('Auto refreshing data...');
-      fetchTransactions();
-    }, 30000);
+    const interval = setInterval(fetchTransactions, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Focus effect - refresh when screen comes into focus
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      console.log('Screen focused - refreshing data...');
-      fetchTransactions();
-    });
+    const unsubscribe = navigation.addListener('focus', fetchTransactions);
     return unsubscribe;
   }, [navigation]);
 
-  useEffect(() => {
-    fetchTransactions();
-  }, []);
-
-  useEffect(() => {
-    applyFilter();
-  }, [transactions, reportType, selectedDate, paymentType, searchQuery]);
+  useEffect(() => { fetchTransactions(); }, []);
+  useEffect(() => { applyFilter(); }, [transactions, reportType, selectedDate, paymentType, searchQuery]);
 
   const fetchTransactions = async () => {
     try {
       setLoading(true);
       const result = await getTransactions();
-
-      console.log('API Result:', result);
-
       if (result.success) {
-        // ✅ FIX: Handle berbagai kemungkinan struktur data dari API
         const transactionsData =
           result.data?.data?.transactions ||
           result.data?.transactions ||
           result.data?.data ||
           (Array.isArray(result.data) ? result.data : []);
-
-        console.log('Transactions Count:', transactionsData.length);
         setTransactions(transactionsData);
         setFilteredTransactions(transactionsData);
       } else {
-        console.log('API Error:', result.error);
         Alert.alert('Error', result.error);
         setTransactions([]);
         setFilteredTransactions([]);
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
       Alert.alert('Error', 'Gagal memuat data transaksi');
       setTransactions([]);
       setFilteredTransactions([]);
@@ -99,102 +69,65 @@ export default function SalesReportScreen({ navigation }) {
     }
   };
 
-  // ✅ FIX: Rename agar tidak konflik dengan nama import filterTransactions
   const applyFilter = () => {
-    if (!Array.isArray(transactions)) {
-      setFilteredTransactions([]);
-      return;
-    }
-
+    if (!Array.isArray(transactions)) { setFilteredTransactions([]); return; }
     let filtered = [...transactions];
 
-    // Filter by search query
     if (searchQuery) {
       filtered = filtered.filter(
         (t) =>
           t.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           t.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.items?.some((item) =>
-            item.product_name?.toLowerCase().includes(searchQuery.toLowerCase())
-          )
+          t.items?.some((item) => item.product_name?.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
 
-    // Filter by payment type
     if (paymentType) {
       filtered = filtered.filter((t) => {
         const method = t.payment_method?.toLowerCase() || '';
-        const selectedMethod = paymentType.toLowerCase();
-        if (selectedMethod === 'transfer bank' || selectedMethod === 'transfer') {
-          return method === 'transfer' || method === 'transfer bank';
-        }
-        return method === selectedMethod;
+        const selected = paymentType.toLowerCase();
+        if (selected === 'transfer bank' || selected === 'transfer') return method === 'transfer' || method === 'transfer bank';
+        return method === selected;
       });
     }
 
-    // Filter by date and report type
     if (selectedDate) {
       filtered = filtered.filter((t) => {
         if (!t.created_at) return false;
-
-        const transactionDate = new Date(t.created_at);
-        const selectedYear = selectedDate.getFullYear();
-        const selectedMonth = selectedDate.getMonth();
-        const selectedDay = selectedDate.getDate();
-        const transYear = transactionDate.getFullYear();
-        const transMonth = transactionDate.getMonth();
-        const transDay = transactionDate.getDate();
-
-        if (reportType === 'harian') {
-          return (
-            transYear === selectedYear &&
-            transMonth === selectedMonth &&
-            transDay === selectedDay
-          );
-        } else if (reportType === 'mingguan') {
-          const weekStart = new Date(selectedDate);
-          weekStart.setHours(0, 0, 0, 0);
-          weekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
-          const weekEnd = new Date(weekStart);
-          weekEnd.setHours(23, 59, 59, 999);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          const transDateNormalized = new Date(transYear, transMonth, transDay);
-          return transDateNormalized >= weekStart && transDateNormalized <= weekEnd;
-        } else if (reportType === 'bulanan') {
-          return transYear === selectedYear && transMonth === selectedMonth;
-        } else if (reportType === 'tahunan') {
-          return transYear === selectedYear;
+        const td = new Date(t.created_at);
+        const sy = selectedDate.getFullYear(), sm = selectedDate.getMonth(), sd = selectedDate.getDate();
+        const ty = td.getFullYear(), tm = td.getMonth(), tday = td.getDate();
+        if (reportType === 'harian') return ty === sy && tm === sm && tday === sd;
+        if (reportType === 'mingguan') {
+          const ws = new Date(selectedDate);
+          ws.setHours(0,0,0,0);
+          ws.setDate(selectedDate.getDate() - selectedDate.getDay());
+          const we = new Date(ws);
+          we.setHours(23,59,59,999);
+          we.setDate(ws.getDate() + 6);
+          const tn = new Date(ty, tm, tday);
+          return tn >= ws && tn <= we;
         }
+        if (reportType === 'bulanan') return ty === sy && tm === sm;
+        if (reportType === 'tahunan') return ty === sy;
         return true;
       });
     }
-
-    console.log('Filtered count:', filtered.length);
     setFilteredTransactions(filtered);
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(amount || 0);
-  };
+  const formatCurrency = (amount) =>
+    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount || 0);
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('id-ID', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   };
 
   const formatInvoiceNumber = (date) => {
     if (!date) return '-';
-    // ✅ FIX: Gunakan WIB offset lokal
     const WIB_OFFSET = 7 * 60 * 60 * 1000;
     const wibDate = new Date(new Date(date).getTime() + WIB_OFFSET);
     const day = wibDate.getUTCDate().toString().padStart(2, '0');
@@ -205,49 +138,41 @@ export default function SalesReportScreen({ navigation }) {
 
   const onDateChange = (event, date) => {
     setShowDatePicker(Platform.OS === 'ios');
-    if (date) {
-      setSelectedDate(date);
-    }
+    if (date) setSelectedDate(date);
   };
 
   const goToPreviousDate = () => {
-    const newDate = new Date(selectedDate);
-    if (reportType === 'harian') newDate.setDate(newDate.getDate() - 1);
-    else if (reportType === 'mingguan') newDate.setDate(newDate.getDate() - 7);
-    else if (reportType === 'bulanan') newDate.setMonth(newDate.getMonth() - 1);
-    else if (reportType === 'tahunan') newDate.setFullYear(newDate.getFullYear() - 1);
-    setSelectedDate(newDate);
+    const d = new Date(selectedDate);
+    if (reportType === 'harian') d.setDate(d.getDate() - 1);
+    else if (reportType === 'mingguan') d.setDate(d.getDate() - 7);
+    else if (reportType === 'bulanan') d.setMonth(d.getMonth() - 1);
+    else if (reportType === 'tahunan') d.setFullYear(d.getFullYear() - 1);
+    setSelectedDate(d);
   };
 
   const goToNextDate = () => {
-    const newDate = new Date(selectedDate);
+    const d = new Date(selectedDate);
     const today = new Date();
-    if (reportType === 'harian') newDate.setDate(newDate.getDate() + 1);
-    else if (reportType === 'mingguan') newDate.setDate(newDate.getDate() + 7);
-    else if (reportType === 'bulanan') newDate.setMonth(newDate.getMonth() + 1);
-    else if (reportType === 'tahunan') newDate.setFullYear(newDate.getFullYear() + 1);
-    if (newDate <= today) setSelectedDate(newDate);
+    if (reportType === 'harian') d.setDate(d.getDate() + 1);
+    else if (reportType === 'mingguan') d.setDate(d.getDate() + 7);
+    else if (reportType === 'bulanan') d.setMonth(d.getMonth() + 1);
+    else if (reportType === 'tahunan') d.setFullYear(d.getFullYear() + 1);
+    if (d <= today) setSelectedDate(d);
   };
 
   const goToToday = () => setSelectedDate(new Date());
 
   const getDateRangeText = () => {
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    if (reportType === 'harian') {
-      return selectedDate.toLocaleDateString('id-ID', options);
-    } else if (reportType === 'mingguan') {
-      const weekStart = new Date(selectedDate);
-      weekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      const startStr = weekStart.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-      const endStr = weekEnd.toLocaleDateString('id-ID', options);
-      return `${startStr} - ${endStr}`;
-    } else if (reportType === 'bulanan') {
-      return selectedDate.toLocaleDateString('id-ID', { year: 'numeric', month: 'long' });
-    } else if (reportType === 'tahunan') {
-      return selectedDate.getFullYear().toString();
+    if (reportType === 'harian') return selectedDate.toLocaleDateString('id-ID', options);
+    if (reportType === 'mingguan') {
+      const ws = new Date(selectedDate);
+      ws.setDate(selectedDate.getDate() - selectedDate.getDay());
+      const we = new Date(ws); we.setDate(ws.getDate() + 6);
+      return `${ws.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${we.toLocaleDateString('id-ID', options)}`;
     }
+    if (reportType === 'bulanan') return selectedDate.toLocaleDateString('id-ID', { year: 'numeric', month: 'long' });
+    if (reportType === 'tahunan') return selectedDate.getFullYear().toString();
     return '';
   };
 
@@ -257,6 +182,50 @@ export default function SalesReportScreen({ navigation }) {
     if (method === 'qris') return styles.paymentQris;
     if (method.includes('transfer') || method === 'card') return styles.paymentTransfer;
     return styles.paymentCash;
+  };
+
+  // ── Tampilkan Struk ──────────────────────────────────────────────────────
+  const handleShowStruk = async (transaction) => {
+    setLoadingReceipt(true);
+    try {
+      // Coba dari storage lokal
+      const stored = await getReceiptByInvoice(transaction.invoice_number);
+      if (stored) {
+        setSelectedReceipt(stored);
+        setShowStruk(true);
+        setLoadingReceipt(false);
+        return;
+      }
+
+      // Bangun langsung dari data transaksi yang ada (tanpa fetch API)
+      const receiptData = buildReceiptData(
+        { data: transaction },
+        (transaction.items || []).map((item) => ({
+          name: item.product_name || item.name,
+          unit_code: item.unit_code || item.code,
+          quantity: item.quantity,
+          price: item.unit_price || item.price,
+          subtotal: item.subtotal || item.quantity * (item.unit_price || item.price),
+          color: item.color || null,
+          size: item.size || null,
+        })),
+        {
+          customer_name: transaction.customer_name,
+          customer_phone: transaction.customer_phone,
+          payment_method: transaction.payment_method,
+          card_type: transaction.card_type,
+          notes: transaction.notes,
+        },
+        transaction.final_amount || transaction.total || 0,
+        transaction.discount_amount || 0
+      );
+      setSelectedReceipt(receiptData);
+      setShowStruk(true);
+    } catch (error) {
+      Alert.alert('Error', 'Gagal memuat data struk');
+    } finally {
+      setLoadingReceipt(false);
+    }
   };
 
   return (
@@ -270,18 +239,14 @@ export default function SalesReportScreen({ navigation }) {
       </View>
 
       <ScrollView>
-        {/* Filter Section */}
+        {/* Filter */}
         <View style={styles.filterCard}>
           <Text style={styles.filterTitle}>Rentang waktu</Text>
           <View style={styles.filterRow}>
             <View style={styles.filterItem}>
               <Text style={styles.filterLabel}>Tipe Laporan</Text>
               <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={reportType}
-                  onValueChange={(itemValue) => setReportType(itemValue)}
-                  style={styles.picker}
-                >
+                <Picker selectedValue={reportType} onValueChange={setReportType} style={styles.picker}>
                   <Picker.Item label="Harian" value="harian" />
                   <Picker.Item label="Mingguan" value="mingguan" />
                   <Picker.Item label="Bulanan" value="bulanan" />
@@ -296,10 +261,7 @@ export default function SalesReportScreen({ navigation }) {
                 <TouchableOpacity onPress={goToPreviousDate} style={styles.dateNavButton}>
                   <Text style={styles.dateNavButtonText}>◀</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setShowDatePicker(true)}
-                  style={styles.dateButtonExpanded}
-                >
+                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButtonExpanded}>
                   <Text style={styles.dateButtonText}>{getDateRangeText()}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={goToNextDate} style={styles.dateNavButton}>
@@ -316,7 +278,6 @@ export default function SalesReportScreen({ navigation }) {
                   display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   onChange={onDateChange}
                   minimumDate={new Date(2024, 0, 1)}
-                  // ✅ FIX: maximumDate diset ke hari ini, bukan hardcode 2025
                   maximumDate={new Date()}
                 />
               )}
@@ -325,11 +286,7 @@ export default function SalesReportScreen({ navigation }) {
             <View style={styles.filterItem}>
               <Text style={styles.filterLabel}>Jenis Pembayaran</Text>
               <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={paymentType}
-                  onValueChange={(itemValue) => setPaymentType(itemValue)}
-                  style={styles.picker}
-                >
+                <Picker selectedValue={paymentType} onValueChange={setPaymentType} style={styles.picker}>
                   <Picker.Item label="Semua Pembayaran" value="" />
                   <Picker.Item label="Cash" value="cash" />
                   <Picker.Item label="QRIS" value="qris" />
@@ -352,7 +309,7 @@ export default function SalesReportScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Summary Cards */}
+        {/* Summary */}
         <View style={styles.summarySection}>
           <View style={styles.summaryHeader}>
             <Text style={styles.summaryHeaderTitle}>Ringkasan</Text>
@@ -378,7 +335,7 @@ export default function SalesReportScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Laporan Table */}
+        {/* Tabel Laporan */}
         <View style={styles.reportCard}>
           <View style={styles.reportHeader}>
             <Text style={styles.reportTitle}>Laporan</Text>
@@ -392,29 +349,25 @@ export default function SalesReportScreen({ navigation }) {
             <View style={styles.emptyContainer}>
               <Ionicons name="document-outline" size={64} color={COLORS.davysGray} />
               <Text style={styles.emptyText}>Tidak ada data transaksi</Text>
-              <Text style={styles.emptySubText}>
-                untuk periode {reportType} yang dipilih
-              </Text>
+              <Text style={styles.emptySubText}>untuk periode {reportType} yang dipilih</Text>
             </View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={true}>
               <View style={styles.tableContainer}>
                 <View style={styles.tableHeader}>
                   <Text style={[styles.tableHeaderCell, styles.colNo]}>NO</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colInvoice]}>No pesanan</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colDate]}>Tanggal pesanan</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colInvoice]}>No Pesanan</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colDate]}>Tanggal</Text>
                   <Text style={[styles.tableHeaderCell, styles.colProduct]}>Nama Produk</Text>
                   <Text style={[styles.tableHeaderCell, styles.colPrice]}>Harga</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colPayment]}>Jenis pembayaran</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colPayment]}>Pembayaran</Text>
+                  <Text style={[styles.tableHeaderCell, styles.colAction]}>Struk</Text>
                 </View>
                 <ScrollView style={styles.tableBody}>
                   {filteredTransactions.map((transaction, index) => (
                     <View
                       key={transaction.id || index}
-                      style={[
-                        styles.tableRow,
-                        index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
-                      ]}
+                      style={[styles.tableRow, index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}
                     >
                       <Text style={[styles.tableCell, styles.colNo]}>{index + 1}</Text>
                       <Text style={[styles.tableCell, styles.colInvoice]}>
@@ -436,13 +389,26 @@ export default function SalesReportScreen({ navigation }) {
                         {formatCurrency(transaction.final_amount || 0)}
                       </Text>
                       <View style={[styles.tableCell, styles.colPayment]}>
-                        <View
-                          style={[styles.paymentBadge, getPaymentBadgeStyle(transaction.payment_method)]}
-                        >
+                        <View style={[styles.paymentBadge, getPaymentBadgeStyle(transaction.payment_method)]}>
                           <Text style={styles.paymentBadgeText}>
                             {(transaction.payment_method || 'Cash').toUpperCase()}
                           </Text>
                         </View>
+                      </View>
+
+                      {/* ── Tombol Cetak Struk per baris ── */}
+                      <View style={[styles.tableCell, styles.colAction]}>
+                        <TouchableOpacity
+                          style={styles.struktBtn}
+                          onPress={() => handleShowStruk(transaction)}
+                          disabled={loadingReceipt}
+                        >
+                          {loadingReceipt ? (
+                            <ActivityIndicator size="small" color={COLORS.pumpkin} />
+                          ) : (
+                            <Ionicons name="receipt-outline" size={18} color={COLORS.pumpkin} />
+                          )}
+                        </TouchableOpacity>
                       </View>
                     </View>
                   ))}
@@ -452,6 +418,14 @@ export default function SalesReportScreen({ navigation }) {
           )}
         </View>
       </ScrollView>
+
+      {/* ── Struk Modal ─────────────────────────────────────────────────── */}
+      <StrukModal
+        visible={showStruk}
+        receiptData={selectedReceipt}
+        onClose={() => { setShowStruk(false); setSelectedReceipt(null); }}
+        showPrintBtn={true}
+      />
     </View>
   );
 }
@@ -459,37 +433,28 @@ export default function SalesReportScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.linen },
   header: {
-    backgroundColor: COLORS.jet,
-    paddingTop: 50, paddingBottom: 20, paddingHorizontal: 20,
+    backgroundColor: COLORS.jet, paddingTop: 50, paddingBottom: 20, paddingHorizontal: 20,
     flexDirection: 'row', alignItems: 'center',
     borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
   },
   backButton: { marginRight: 15 },
   headerTitle: { color: COLORS.pumpkin, fontSize: 24, fontWeight: 'bold' },
-  filterCard: {
-    backgroundColor: COLORS.white, margin: 16, padding: 20,
-    borderRadius: 12, elevation: 3,
-  },
+  filterCard: { backgroundColor: COLORS.white, margin: 16, padding: 20, borderRadius: 12, elevation: 3 },
   filterTitle: { fontSize: 18, fontWeight: '600', color: COLORS.jet, marginBottom: 16 },
   filterRow: { gap: 12 },
   filterItem: { marginBottom: 12 },
   filterLabel: { fontSize: 14, fontWeight: '500', color: COLORS.jet, marginBottom: 8 },
-  pickerContainer: {
-    borderWidth: 2, borderColor: COLORS.davysGray,
-    borderRadius: 8, backgroundColor: COLORS.white,
-  },
+  pickerContainer: { borderWidth: 2, borderColor: COLORS.davysGray, borderRadius: 8, backgroundColor: COLORS.white },
   picker: { height: 48, color: COLORS.jet },
   dateButtonExpanded: {
-    flex: 1, borderWidth: 2, borderColor: COLORS.davysGray,
-    borderRadius: 8, padding: 14, backgroundColor: COLORS.white,
-    alignItems: 'center', justifyContent: 'center',
+    flex: 1, borderWidth: 2, borderColor: COLORS.davysGray, borderRadius: 8, padding: 14,
+    backgroundColor: COLORS.white, alignItems: 'center', justifyContent: 'center',
   },
   dateButtonText: { color: COLORS.jet, fontSize: 14, fontWeight: '500' },
   dateNavigationContainer: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   dateNavButton: {
     width: 50, height: 48, borderWidth: 2, borderColor: COLORS.davysGray,
-    borderRadius: 8, backgroundColor: COLORS.pumpkin,
-    alignItems: 'center', justifyContent: 'center',
+    borderRadius: 8, backgroundColor: COLORS.pumpkin, alignItems: 'center', justifyContent: 'center',
   },
   dateNavButtonText: { color: COLORS.white, fontSize: 20, fontWeight: 'bold' },
   todayButton: {
@@ -498,28 +463,18 @@ const styles = StyleSheet.create({
   },
   todayButtonText: { color: COLORS.pumpkin, fontSize: 13, fontWeight: '600' },
   searchInput: {
-    borderWidth: 2, borderColor: COLORS.davysGray,
-    borderRadius: 8, padding: 14, backgroundColor: COLORS.white,
-    color: COLORS.jet, fontSize: 14,
+    borderWidth: 2, borderColor: COLORS.davysGray, borderRadius: 8, padding: 14,
+    backgroundColor: COLORS.white, color: COLORS.jet, fontSize: 14,
   },
   summarySection: { marginBottom: 16 },
-  summaryHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 16, marginBottom: 12,
-  },
+  summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 },
   summaryHeaderTitle: { fontSize: 18, fontWeight: '600', color: COLORS.jet },
   refreshIconButton: { padding: 8 },
   summaryContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 12 },
-  summaryCard: {
-    flex: 1, backgroundColor: COLORS.white, padding: 20,
-    borderRadius: 12, elevation: 3,
-  },
+  summaryCard: { flex: 1, backgroundColor: COLORS.white, padding: 20, borderRadius: 12, elevation: 3 },
   summaryLabel: { fontSize: 14, color: COLORS.davysGray, marginBottom: 8 },
   summaryValue: { fontSize: 20, fontWeight: 'bold', color: COLORS.pumpkin },
-  reportCard: {
-    backgroundColor: COLORS.white, margin: 16, marginTop: 0,
-    borderRadius: 12, overflow: 'hidden', elevation: 3,
-  },
+  reportCard: { backgroundColor: COLORS.white, margin: 16, marginTop: 0, borderRadius: 12, overflow: 'hidden', elevation: 3 },
   reportHeader: { backgroundColor: COLORS.jet, padding: 20 },
   reportTitle: { color: COLORS.white, fontSize: 20, fontWeight: 'bold' },
   loadingContainer: { padding: 40, alignItems: 'center' },
@@ -544,7 +499,8 @@ const styles = StyleSheet.create({
   colDate: { width: 200 },
   colProduct: { width: 250 },
   colPrice: { width: 130 },
-  colPayment: { width: 150 },
+  colPayment: { width: 120 },
+  colAction: { width: 70, justifyContent: 'center', alignItems: 'center' },
   productText: { fontSize: 12, color: COLORS.jet, marginBottom: 4 },
   priceText: { color: COLORS.pumpkin, fontWeight: '600' },
   paymentBadge: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, alignSelf: 'flex-start' },
@@ -552,4 +508,12 @@ const styles = StyleSheet.create({
   paymentQris: { backgroundColor: COLORS.pumpkin },
   paymentTransfer: { backgroundColor: COLORS.davysGray },
   paymentBadgeText: { color: COLORS.white, fontSize: 11, fontWeight: '600' },
+
+  // ── Tombol Struk ──
+  struktBtn: {
+    width: 36, height: 36, borderRadius: 8,
+    backgroundColor: '#FC6A0A18',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: '#FC6A0A33',
+  },
 });

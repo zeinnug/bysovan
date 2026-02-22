@@ -1,4 +1,4 @@
-// pages/NewTransactionScreen.js - Main Screen dengan UI Components (UPDATED - No Discount %)
+// pages/NewTransactionScreen.js - UPDATED dengan integrasi Struk
 import React from 'react';
 import {
   View,
@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import QRCodeScanner from '../keduitan/qrscan';
+import StrukModal from '../keduitan/Struk';
 import { COLORS, cardShadow, formatCurrency } from '../utils/styleHelpers';
 import { useTransactionLogic } from '../keduitan/sold';
 
 export default function NewTransactionScreen({ navigation }) {
   const {
-    // State
     products,
     currentProducts,
     searchQuery,
@@ -33,8 +33,12 @@ export default function NewTransactionScreen({ navigation }) {
     setNewPrice,
     customerData,
     dispatchCustomer,
-    
-    // Functions
+
+    // Struk
+    showStruk,
+    currentReceiptData,
+    handleCloseStruk,
+
     loadProducts,
     handlePrevious,
     handleNext,
@@ -54,8 +58,7 @@ export default function NewTransactionScreen({ navigation }) {
     dispatchCustomer({ type: 'UPDATE_FIELD', field, value });
   };
 
-  // ========== UI COMPONENTS ==========
-
+  // ── Product Card ─────────────────────────────────────────────────────────
   const renderProductItem = ({ item }) => {
     const price = parseFloat(item.price) || 0;
     return (
@@ -73,10 +76,7 @@ export default function NewTransactionScreen({ navigation }) {
             {item.production_code || ''}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => addToCart(item)}
-        >
+        <TouchableOpacity style={styles.addButton} onPress={() => addToCart(item)}>
           <Ionicons name="add" size={20} color={COLORS.white} />
           <Text style={styles.addButtonText}>Tambah</Text>
         </TouchableOpacity>
@@ -84,6 +84,7 @@ export default function NewTransactionScreen({ navigation }) {
     );
   };
 
+  // ── Cart Card ────────────────────────────────────────────────────────────
   const renderCartItem = ({ item }) => {
     const price = parseFloat(item.price) || 0;
     return (
@@ -123,10 +124,7 @@ export default function NewTransactionScreen({ navigation }) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={COLORS.linen} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Buat Transaksi Baru</Text>
@@ -134,15 +132,15 @@ export default function NewTransactionScreen({ navigation }) {
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Scanner Section */}
+        {/* Scanner */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Scan Produk</Text>
           </View>
           <View style={styles.scannerCard}>
             <Ionicons name="camera" size={64} color={COLORS.pumpkin} />
-            <TouchableOpacity 
-              style={styles.scanButton} 
+            <TouchableOpacity
+              style={styles.scanButton}
               onPress={openScanner}
               disabled={loading || !isProductsLoaded}
             >
@@ -153,7 +151,7 @@ export default function NewTransactionScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Product List Section */}
+        {/* Product List */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Pilih Produk</Text>
@@ -178,61 +176,33 @@ export default function NewTransactionScreen({ navigation }) {
                   <Text style={styles.emptyText}>Tidak ada produk ditemukan</Text>
                 }
               />
-              
-              {/* Pagination Controls */}
               {totalPages > 1 && (
                 <View style={styles.paginationContainer}>
                   <View style={styles.paginationControls}>
                     <TouchableOpacity
-                      style={[
-                        styles.paginationButton,
-                        currentPage === 1 && styles.paginationButtonDisabled
-                      ]}
+                      style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
                       onPress={handlePrevious}
                       disabled={currentPage === 1}
                     >
-                      <Ionicons 
-                        name="chevron-back" 
-                        size={20} 
-                        color={currentPage === 1 ? COLORS.davysGray : COLORS.white} 
-                      />
-                      <Text 
-                        style={[
-                          styles.paginationButtonText,
-                          currentPage === 1 && styles.paginationButtonTextDisabled
-                        ]}
-                      >
+                      <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? COLORS.davysGray : COLORS.white} />
+                      <Text style={[styles.paginationButtonText, currentPage === 1 && styles.paginationButtonTextDisabled]}>
                         Previous
                       </Text>
                     </TouchableOpacity>
-
                     <View style={styles.pageNumberContainer}>
                       <Text style={styles.pageNumber}>{currentPage}</Text>
                       <Text style={styles.pageNumberSeparator}>/</Text>
                       <Text style={styles.pageNumberTotal}>{totalPages}</Text>
                     </View>
-
                     <TouchableOpacity
-                      style={[
-                        styles.paginationButton,
-                        currentPage === totalPages && styles.paginationButtonDisabled
-                      ]}
+                      style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
                       onPress={handleNext}
                       disabled={currentPage === totalPages}
                     >
-                      <Text 
-                        style={[
-                          styles.paginationButtonText,
-                          currentPage === totalPages && styles.paginationButtonTextDisabled
-                        ]}
-                      >
+                      <Text style={[styles.paginationButtonText, currentPage === totalPages && styles.paginationButtonTextDisabled]}>
                         Next
                       </Text>
-                      <Ionicons 
-                        name="chevron-forward" 
-                        size={20} 
-                        color={currentPage === totalPages ? COLORS.davysGray : COLORS.white} 
-                      />
+                      <Ionicons name="chevron-forward" size={20} color={currentPage === totalPages ? COLORS.davysGray : COLORS.white} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -241,7 +211,7 @@ export default function NewTransactionScreen({ navigation }) {
           )}
         </View>
 
-        {/* Customer Information Section */}
+        {/* Customer Info */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Informasi Pelanggan</Text>
@@ -255,7 +225,6 @@ export default function NewTransactionScreen({ navigation }) {
               placeholder="Masukkan nama pelanggan (opsional)"
               placeholderTextColor={COLORS.davysGray}
             />
-
             <Text style={styles.label}>No. Pelanggan</Text>
             <TextInput
               style={styles.input}
@@ -265,7 +234,6 @@ export default function NewTransactionScreen({ navigation }) {
               placeholderTextColor={COLORS.davysGray}
               keyboardType="phone-pad"
             />
-
             <Text style={styles.label}>Metode Pembayaran *</Text>
             <View style={styles.paymentMethodContainer}>
               {[
@@ -282,7 +250,6 @@ export default function NewTransactionScreen({ navigation }) {
                   ]}
                   onPress={() => {
                     handleUpdateCustomerField('payment_method', method.value);
-                    // Reset card_type jika bukan debit
                     if (method.value !== 'debit') {
                       handleUpdateCustomerField('card_type', null);
                     }
@@ -300,7 +267,6 @@ export default function NewTransactionScreen({ navigation }) {
               ))}
             </View>
 
-            {/* Card Type Selection (hanya muncul jika payment method = debit) */}
             {customerData.payment_method === 'debit' && (
               <>
                 <Text style={styles.label}>Jenis Kartu Debit *</Text>
@@ -345,7 +311,7 @@ export default function NewTransactionScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Shopping Cart Section */}
+        {/* Cart */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Keranjang Belanja</Text>
@@ -365,7 +331,7 @@ export default function NewTransactionScreen({ navigation }) {
           )}
         </View>
 
-        {/* Payment Summary Section */}
+        {/* Payment Summary */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Ringkasan Pembayaran</Text>
@@ -373,11 +339,8 @@ export default function NewTransactionScreen({ navigation }) {
           <View style={styles.summaryCard}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>
-                {formatCurrency(calculateSubtotal())}
-              </Text>
+              <Text style={styles.summaryValue}>{formatCurrency(calculateSubtotal())}</Text>
             </View>
-
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Harga Baru (opsional)</Text>
               <TextInput
@@ -389,8 +352,6 @@ export default function NewTransactionScreen({ navigation }) {
                 placeholderTextColor={COLORS.davysGray}
               />
             </View>
-
-            {/* Tampilkan diskon otomatis (read-only) jika ada harga baru */}
             {newPrice && parseFloat(newPrice) > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.discountLabel}>Diskon</Text>
@@ -399,16 +360,11 @@ export default function NewTransactionScreen({ navigation }) {
                 </Text>
               </View>
             )}
-
             <View style={styles.divider} />
-
             <View style={styles.summaryRow}>
               <Text style={styles.totalLabel}>Total Bayar</Text>
-              <Text style={styles.totalValue}>
-                {formatCurrency(calculateTotal())}
-              </Text>
+              <Text style={styles.totalValue}>{formatCurrency(calculateTotal())}</Text>
             </View>
-
             <TouchableOpacity
               style={styles.checkoutButton}
               onPress={handleCheckout}
@@ -424,27 +380,29 @@ export default function NewTransactionScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* QR Code Scanner Modal */}
+      {/* QR Scanner */}
       <QRCodeScanner
         visible={showScanner}
         availableProducts={products}
-        onClose={() => {
-          console.log('[NewTransactionScreen] Closing scanner');
-          setShowScanner(false);
-        }}
+        onClose={() => setShowScanner(false)}
         onScanSuccess={handleScanSuccess}
         onScanError={handleScanError}
         onRequestRefresh={loadProducts}
+      />
+
+      {/* ── STRUK MODAL ─────────────────────────────────────────────────── */}
+      <StrukModal
+        visible={showStruk}
+        receiptData={currentReceiptData}
+        onClose={handleCloseStruk}
+        showPrintBtn={true}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.linen,
-  },
+  container: { flex: 1, backgroundColor: COLORS.linen },
   header: {
     backgroundColor: COLORS.jet,
     paddingTop: 50,
@@ -454,369 +412,121 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.white,
-    letterSpacing: 1,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-  },
-  section: {
-    padding: 20,
-  },
-  sectionHeader: {
-    marginBottom: 15,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.pumpkin,
-  },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.white, letterSpacing: 1 },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  content: { flex: 1 },
+  section: { padding: 20 },
+  sectionHeader: { marginBottom: 15 },
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.pumpkin },
   scannerCard: {
-    backgroundColor: COLORS.jet,
-    borderRadius: 12,
-    padding: 40,
-    alignItems: 'center',
-    ...cardShadow,
+    backgroundColor: COLORS.jet, borderRadius: 12, padding: 40,
+    alignItems: 'center', ...cardShadow,
   },
   scanButton: {
-    backgroundColor: COLORS.pumpkin,
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 8,
-    marginTop: 20,
+    backgroundColor: COLORS.pumpkin, paddingHorizontal: 30,
+    paddingVertical: 15, borderRadius: 8, marginTop: 20,
   },
-  scanButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  scanButtonText: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' },
   searchInput: {
-    backgroundColor: COLORS.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.jet,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: COLORS.davysGray,
+    backgroundColor: COLORS.white, borderRadius: 8, padding: 12,
+    fontSize: 14, color: COLORS.jet, marginBottom: 15,
+    borderWidth: 1, borderColor: COLORS.davysGray,
   },
   productCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    ...cardShadow,
+    backgroundColor: COLORS.white, borderRadius: 12, padding: 15, marginBottom: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...cardShadow,
   },
-  productInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-    marginBottom: 5,
-  },
-  productPrice: {
-    fontSize: 14,
-    color: COLORS.pumpkin,
-    fontWeight: '600',
-    marginBottom: 5,
-  },
-  productDetails: {
-    fontSize: 12,
-    color: COLORS.davysGray,
-  },
+  productInfo: { flex: 1, marginRight: 10 },
+  productName: { fontSize: 16, fontWeight: 'bold', color: COLORS.jet, marginBottom: 5 },
+  productPrice: { fontSize: 14, color: COLORS.pumpkin, fontWeight: '600', marginBottom: 5 },
+  productDetails: { fontSize: 12, color: COLORS.davysGray },
   addButton: {
-    backgroundColor: COLORS.pumpkin,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    backgroundColor: COLORS.pumpkin, paddingHorizontal: 15, paddingVertical: 10,
+    borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 5,
   },
-  addButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  customerCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 20,
-    ...cardShadow,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.jet,
-    marginBottom: 8,
-    marginTop: 12,
-  },
+  addButtonText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
+  customerCard: { backgroundColor: COLORS.white, borderRadius: 12, padding: 20, ...cardShadow },
+  label: { fontSize: 14, fontWeight: '600', color: COLORS.jet, marginBottom: 8, marginTop: 12 },
   input: {
-    backgroundColor: COLORS.linen,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.jet,
-    borderWidth: 1,
-    borderColor: COLORS.linen,
+    backgroundColor: COLORS.linen, borderRadius: 8, padding: 12,
+    fontSize: 14, color: COLORS.jet, borderWidth: 1, borderColor: COLORS.linen,
   },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  paymentMethodContainer: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-    flexWrap: 'wrap',
-  },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  paymentMethodContainer: { flexDirection: 'row', gap: 10, marginTop: 8, flexWrap: 'wrap' },
   paymentMethodButton: {
-    flex: 1,
-    minWidth: '22%',
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: COLORS.linen,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.linen,
+    flex: 1, minWidth: '22%', paddingVertical: 12, borderRadius: 8,
+    backgroundColor: COLORS.linen, alignItems: 'center',
+    borderWidth: 2, borderColor: COLORS.linen,
   },
-  paymentMethodActive: {
-    backgroundColor: COLORS.pumpkin,
-    borderColor: COLORS.pumpkin,
-  },
-  paymentMethodText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.davysGray,
-  },
-  paymentMethodTextActive: {
-    color: COLORS.white,
-  },
+  paymentMethodActive: { backgroundColor: COLORS.pumpkin, borderColor: COLORS.pumpkin },
+  paymentMethodText: { fontSize: 14, fontWeight: '600', color: COLORS.davysGray },
+  paymentMethodTextActive: { color: COLORS.white },
   cardTypeButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: COLORS.linen,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.linen,
+    flex: 1, paddingVertical: 12, borderRadius: 8,
+    backgroundColor: COLORS.linen, alignItems: 'center',
+    borderWidth: 2, borderColor: COLORS.linen,
   },
-  cardTypeActive: {
-    backgroundColor: COLORS.jet,
-    borderColor: COLORS.jet,
-  },
-  cardTypeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.davysGray,
-  },
-  cardTypeTextActive: {
-    color: COLORS.white,
-  },
+  cardTypeActive: { backgroundColor: COLORS.jet, borderColor: COLORS.jet },
+  cardTypeText: { fontSize: 14, fontWeight: '600', color: COLORS.davysGray },
+  cardTypeTextActive: { color: COLORS.white },
   emptyCart: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 40,
-    alignItems: 'center',
-    ...cardShadow,
+    backgroundColor: COLORS.white, borderRadius: 12,
+    padding: 40, alignItems: 'center', ...cardShadow,
   },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.davysGray,
-    marginTop: 10,
-    textAlign: 'center',
-  },
+  emptyText: { fontSize: 16, color: COLORS.davysGray, marginTop: 10, textAlign: 'center' },
   cartItem: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 12,
-    ...cardShadow,
+    backgroundColor: COLORS.white, borderRadius: 12,
+    padding: 15, marginBottom: 12, ...cardShadow,
   },
-  cartItemInfo: {
-    marginBottom: 10,
-  },
-  cartItemName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-    marginBottom: 5,
-  },
-  cartItemPrice: {
-    fontSize: 14,
-    color: COLORS.pumpkin,
-    fontWeight: '600',
-  },
-  cartItemActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  cartItemInfo: { marginBottom: 10 },
+  cartItemName: { fontSize: 16, fontWeight: 'bold', color: COLORS.jet, marginBottom: 5 },
+  cartItemPrice: { fontSize: 14, color: COLORS.pumpkin, fontWeight: '600' },
+  cartItemActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   quantityButton: {
-    backgroundColor: COLORS.pumpkin,
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: COLORS.pumpkin, width: 30, height: 30,
+    borderRadius: 6, justifyContent: 'center', alignItems: 'center',
   },
-  quantityText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-    minWidth: 30,
-    textAlign: 'center',
-  },
+  quantityText: { fontSize: 16, fontWeight: 'bold', color: COLORS.jet, minWidth: 30, textAlign: 'center' },
   deleteButton: {
-    backgroundColor: COLORS.goldenGate,
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 'auto',
+    backgroundColor: COLORS.goldenGate, width: 30, height: 30,
+    borderRadius: 6, justifyContent: 'center', alignItems: 'center', marginLeft: 'auto',
   },
-  summaryCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 20,
-    ...cardShadow,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: COLORS.davysGray,
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.jet,
-  },
+  summaryCard: { backgroundColor: COLORS.white, borderRadius: 12, padding: 20, ...cardShadow },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  summaryLabel: { fontSize: 14, color: COLORS.davysGray },
+  summaryValue: { fontSize: 14, fontWeight: '600', color: COLORS.jet },
   newPriceInput: {
-    backgroundColor: COLORS.linen,
-    borderRadius: 8,
-    padding: 8,
-    fontSize: 14,
-    color: COLORS.jet,
-    width: 120,
-    textAlign: 'right',
+    backgroundColor: COLORS.linen, borderRadius: 8, padding: 8,
+    fontSize: 14, color: COLORS.jet, width: 120, textAlign: 'right',
   },
-  discountLabel: {
-    fontSize: 14,
-    color: COLORS.success,
-    fontWeight: '600',
-  },
-  discountValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.success,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.linen,
-    marginVertical: 10,
-  },
-  totalLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-  },
-  totalValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.pumpkin,
-  },
+  discountLabel: { fontSize: 14, color: COLORS.success, fontWeight: '600' },
+  discountValue: { fontSize: 14, fontWeight: '600', color: COLORS.success },
+  divider: { height: 1, backgroundColor: COLORS.linen, marginVertical: 10 },
+  totalLabel: { fontSize: 18, fontWeight: 'bold', color: COLORS.jet },
+  totalValue: { fontSize: 20, fontWeight: 'bold', color: COLORS.pumpkin },
   checkoutButton: {
-    backgroundColor: COLORS.success,
-    paddingVertical: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
+    backgroundColor: COLORS.success, paddingVertical: 15,
+    borderRadius: 8, alignItems: 'center', marginTop: 20,
   },
-  checkoutButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  checkoutButtonText: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' },
   paginationContainer: {
-    backgroundColor: COLORS.jet,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    marginTop: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: COLORS.jet, paddingVertical: 16, paddingHorizontal: 20,
+    borderRadius: 12, marginTop: 15, alignItems: 'center', justifyContent: 'center',
   },
-  paginationControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  paginationControls: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   paginationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.pumpkin,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 6,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.pumpkin,
+    paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, gap: 6,
   },
-  paginationButtonDisabled: {
-    backgroundColor: COLORS.davysGray,
-    opacity: 0.5,
-  },
-  paginationButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  paginationButtonTextDisabled: {
-    color: COLORS.davysGray,
-  },
+  paginationButtonDisabled: { backgroundColor: COLORS.davysGray, opacity: 0.5 },
+  paginationButtonText: { fontSize: 14, fontWeight: '600', color: COLORS.white },
+  paginationButtonTextDisabled: { color: COLORS.davysGray },
   pageNumberContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.linen,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    minWidth: 80,
-    justifyContent: 'center',
-    gap: 4,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.linen,
+    paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8,
+    minWidth: 80, justifyContent: 'center', gap: 4,
   },
-  pageNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-  },
-  pageNumberSeparator: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.davysGray,
-  },
-  pageNumberTotal: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.davysGray,
-  },
+  pageNumber: { fontSize: 16, fontWeight: 'bold', color: COLORS.jet },
+  pageNumberSeparator: { fontSize: 16, fontWeight: '600', color: COLORS.davysGray },
+  pageNumberTotal: { fontSize: 16, fontWeight: '600', color: COLORS.davysGray },
 });

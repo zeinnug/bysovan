@@ -496,7 +496,7 @@ const HomeScreen = () => {
           </View>
           <View>
             <Text style={styles.headerBrand}>SEPATU SOVAN</Text>
-            <Text style={styles.headerTagline}>Sistem Mana</Text>
+            <Text style={styles.headerTagline}>Sistem Manajemen Toko Sepatu</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.notifBtn}>
