@@ -6,9 +6,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
+  Alert,
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
+import QRCode from 'react-native-qrcode-svg';
+import * as Print from 'expo-print';
 
 const ProductTable = ({ 
   products, 
@@ -50,13 +52,6 @@ const ProductTable = ({
     return `Rp ${numeric.toLocaleString('id-ID')}`;
   };
 
-  // Generate QR Code URL
-  const generateQRCodeURL = (barcode) => {
-    if (!barcode) return null;
-    const encodedData = encodeURIComponent(barcode);
-    return `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodedData}`;
-  };
-
   const handlePrevious = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
@@ -66,6 +61,68 @@ const ProductTable = ({
   const handleNext = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePrintQR = async (product) => {
+    try {
+      if (!product?.barcode) {
+        Alert.alert('Tidak bisa cetak', 'Produk ini belum memiliki QR / barcode.');
+        return;
+      }
+
+      const title = product.nama || 'Produk';
+      const kode = String(product.barcode);
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+        kode,
+      )}`;
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              width: 260px;
+              margin: 0 auto;
+              padding: 8px;
+              text-align: center;
+            }
+            h1 {
+              font-size: 14px;
+              margin-bottom: 4px;
+            }
+            p {
+              font-size: 11px;
+              margin-bottom: 6px;
+            }
+            img {
+              width: 180px;
+              height: 180px;
+              margin: 4px auto 2px;
+            }
+            .code {
+              font-size: 11px;
+              margin-top: 2px;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <p>${product.merek || ''}${product.ukuran ? ` - ${product.ukuran}` : ''}</p>
+          <img src="${qrUrl}" />
+          <p class="code">${kode}</p>
+        </body>
+        </html>
+      `;
+
+      await Print.printAsync({ html });
+    } catch (error) {
+      Alert.alert('Gagal mencetak', error?.message || 'Terjadi kesalahan saat mencetak QR.');
     }
   };
 
@@ -184,11 +241,9 @@ const ProductTable = ({
                     {/* QR Code */}
                     <View style={[styles.cell, styles.colQR]}>
                       {product.barcode ? (
-                        <Image
-                          source={{ uri: generateQRCodeURL(product.barcode) }}
-                          style={styles.qrImage}
-                          resizeMode="contain"
-                        />
+                        <View style={styles.qrBox}>
+                          <QRCode value={String(product.barcode)} size={60} />
+                        </View>
                       ) : (
                         <Text style={styles.noQRText}>-</Text>
                       )}
@@ -205,12 +260,20 @@ const ProductTable = ({
                           <Octicons name="pencil" size={16} color="#FFFFFF" />
                         </TouchableOpacity>
 
-                        {/* Print/QR Button */}
+                        {/* QR Modal Button */}
                         <TouchableOpacity 
-                          style={[styles.actionBtn, styles.printBtn]}
+                          style={[styles.actionBtn, styles.qrBtn]}
                           onPress={() => onShowQR(product)}
                         >
                           <Octicons name="device-camera" size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+
+                        {/* Print QR Button */}
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.printBtn]}
+                          onPress={() => handlePrintQR(product)}
+                        >
+                          <Octicons name="device-desktop" size={16} color="#FFFFFF" />
                         </TouchableOpacity>
 
                         {/* Delete Button */}
@@ -325,8 +388,10 @@ const styles = StyleSheet.create({
   colWarna: { width: 120 },
   colStok: { width: 90 },
   colHarga: { width: 120 },
-  colQR: { width: 100 },
-  colActions: { width: 140 },
+  // Sedikit dilebarkan agar ada jarak dengan kolom Actions
+  colQR: { width: 120 },
+  // Lebarkan & beri padding kiri supaya tidak terlalu mepet dengan QR
+  colActions: { width: 160, paddingLeft: 12 },
 
   // ========== CATEGORY ROW ==========
   categoryRow: {
@@ -372,9 +437,15 @@ const styles = StyleSheet.create({
   },
 
   // ========== QR CODE ==========
-  qrImage: {
+  qrBox: {
     width: 70,
     height: 70,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noQRText: {
     fontSize: 14,
@@ -398,8 +469,11 @@ const styles = StyleSheet.create({
   editBtn: {
     backgroundColor: '#3B82F6', // Blue
   },
-  printBtn: {
+  qrBtn: {
     backgroundColor: '#10B981', // Green
+  },
+  printBtn: {
+    backgroundColor: '#F97316', // Orange
   },
   deleteBtn: {
     backgroundColor: '#EF4444', // Red

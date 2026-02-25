@@ -1,13 +1,13 @@
-// pages/TransactionScreen.js - UPDATED dengan tombol Cetak Struk
+// pages/TransactionScreen.js - UPDATED dengan Filter Tanggal & Metode Pembayaran
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, ScrollView,
-  Alert, Dimensions, SafeAreaView, StatusBar,
+  Alert, Dimensions, SafeAreaView, StatusBar, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { filterTransactions } from '../data/services/transactionService'; // getTransactionById dihapus karena tidak lagi digunakan
+import { filterTransactions } from '../data/services/transactionService';
 import StrukModal, { buildReceiptData, getReceiptByInvoice } from '../keduitan/Struk';
 
 const { width } = Dimensions.get('window');
@@ -18,6 +18,9 @@ const COLORS = {
   pumpkinLight: '#FD8A3C', pumpkinDim: '#FC6A0A18', goldenGate: '#E74504',
   white: '#FFFFFF', success: '#10B981', successDim: '#10B98115',
   cardBg: '#FFFFFF', border: '#F0E8E0',
+  // Filter panel (dark theme seperti gambar)
+  filterBg: '#1A1A1A', filterCard: '#2A3347', filterBorder: '#374151',
+  filterText: '#FC6A0A', filterMuted: '#ffffff',
 };
 
 const PAYMENT_COLORS = {
@@ -30,38 +33,224 @@ const PAYMENT_COLORS = {
 
 const getPaymentColor = (method) => {
   const m = (method || '').toLowerCase();
-  if (m === 'cash') return PAYMENT_COLORS.cash;
+  if (m === 'cash' || m === 'tunai') return PAYMENT_COLORS.cash;
   if (m === 'qris') return PAYMENT_COLORS.qris;
   if (m.includes('transfer')) return PAYMENT_COLORS.transfer;
   if (m === 'debit') return PAYMENT_COLORS.debit;
   return PAYMENT_COLORS.default;
 };
 
+const PAYMENT_OPTIONS = [
+  { label: 'Semua Metode', value: '' },
+  { label: 'Tunai', value: 'cash' },
+  { label: 'QRIS', value: 'qris' },
+  { label: 'Debit', value: 'debit' },
+  { label: 'Transfer', value: 'transfer' },
+];
+
+const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MONTHS = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
+// ─── Custom Calendar Component ──────────────────────────────────────────────
+function CustomCalendar({ selectedDate, onSelectDate, onClear, onToday }) {
+  const today = new Date();
+  const [viewDate, setViewDate] = useState(selectedDate || today);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  // Build calendar grid (6 rows × 7 cols)
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) {
+    cells.push({ day: daysInPrevMonth - firstDay + 1 + i, type: 'prev' });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, type: 'current' });
+  }
+  const remaining = 42 - cells.length;
+  for (let d = 1; d <= remaining; d++) {
+    cells.push({ day: d, type: 'next' });
+  }
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  const isSelected = (day, type) => {
+    if (!selectedDate || type !== 'current') return false;
+    return (
+      selectedDate.getDate() === day &&
+      selectedDate.getMonth() === month &&
+      selectedDate.getFullYear() === year
+    );
+  };
+
+  const isToday = (day, type) => {
+    if (type !== 'current') return false;
+    return (
+      today.getDate() === day &&
+      today.getMonth() === month &&
+      today.getFullYear() === year
+    );
+  };
+
+  return (
+    <View style={calStyles.container}>
+      {/* Month / Year header */}
+      <View style={calStyles.header}>
+        <Text style={calStyles.monthYear}>
+          {MONTHS[month]} {year} ▼
+        </Text>
+        <View style={calStyles.navRow}>
+          <TouchableOpacity style={calStyles.navBtn} onPress={prevMonth}>
+            <Ionicons name="chevron-up" size={16} color={COLORS.filterText} />
+          </TouchableOpacity>
+          <TouchableOpacity style={calStyles.navBtn} onPress={nextMonth}>
+            <Ionicons name="chevron-down" size={16} color={COLORS.filterText} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Day names */}
+      <View style={calStyles.dayNames}>
+        {DAYS.map((d) => (
+          <Text key={d} style={calStyles.dayName}>{d}</Text>
+        ))}
+      </View>
+
+      {/* Date grid */}
+      <View style={calStyles.grid}>
+        {cells.map((cell, idx) => {
+          const sel = isSelected(cell.day, cell.type);
+          const tod = isToday(cell.day, cell.type);
+          return (
+            <TouchableOpacity
+              key={idx}
+              style={[
+                calStyles.cell,
+                sel && calStyles.cellSelected,
+                tod && !sel && calStyles.cellToday,
+              ]}
+              onPress={() => {
+                if (cell.type === 'current') {
+                  onSelectDate(new Date(year, month, cell.day));
+                } else if (cell.type === 'prev') {
+                  const d = new Date(year, month - 1, cell.day);
+                  setViewDate(new Date(year, month - 1, 1));
+                  onSelectDate(d);
+                } else {
+                  const d = new Date(year, month + 1, cell.day);
+                  setViewDate(new Date(year, month + 1, 1));
+                  onSelectDate(d);
+                }
+              }}
+            >
+              <Text style={[
+                calStyles.cellText,
+                cell.type !== 'current' && calStyles.cellTextOther,
+                sel && calStyles.cellTextSelected,
+                tod && !sel && calStyles.cellTextToday,
+              ]}>
+                {cell.day}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Footer */}
+      <View style={calStyles.footer}>
+        <TouchableOpacity onPress={onClear}>
+          <Text style={calStyles.footerClear}>Clear</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => { onSelectDate(today); setViewDate(today); onToday(); }}>
+          <Text style={calStyles.footerToday}>Today</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ─── Payment Dropdown Component ──────────────────────────────────────────────
+function PaymentDropdown({ value, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const selected = PAYMENT_OPTIONS.find((o) => o.value === value) || PAYMENT_OPTIONS[0];
+
+  return (
+    <View style={dropStyles.wrapper}>
+      <TouchableOpacity
+        style={[dropStyles.trigger, open && dropStyles.triggerOpen]}
+        onPress={() => setOpen(!open)}
+      >
+        <Text style={dropStyles.triggerText}>{selected.label}</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.filterMuted} />
+      </TouchableOpacity>
+      {open && (
+        <View style={dropStyles.menu}>
+          {PAYMENT_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[dropStyles.menuItem, opt.value === value && dropStyles.menuItemActive]}
+              onPress={() => { onSelect(opt.value); setOpen(false); }}
+            >
+              <Text style={[dropStyles.menuItemText, opt.value === value && dropStyles.menuItemTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function TransactionScreen({ navigation }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [activePaymentFilter, setActivePaymentFilter] = useState('');
-  const [activeStatusFilter, setActiveStatusFilter] = useState('');
 
-  // ── Struk state ──────────────────────────────────────────────────────────
+  // ── Filter state ──
+  const [filterOpen, setFilterOpen] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [activePaymentFilter, setActivePaymentFilter] = useState('');
+
+  // ── Struk state ──
   const [showStruk, setShowStruk] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [loadingReceipt, setLoadingReceipt] = useState(false);
 
   const formatDateToYYYYMMDD = (date) => {
+    if (!date) return '';
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+
+  const formatDateDisplay = (date) => {
+    if (!date) return '--/--/----';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   const todayStr = formatDateToYYYYMMDD(new Date());
 
   useFocusEffect(
     useCallback(() => {
+      const today = new Date();
+      setSelectedDate(today);
       setActivePaymentFilter('');
-      setActiveStatusFilter('');
-      loadTransactionsWithFilter({ date: todayStr, payment_method: '', status: '' });
+      loadTransactionsWithFilter({ date: todayStr, payment_method: '' });
     }, [])
   );
 
@@ -71,7 +260,6 @@ export default function TransactionScreen({ navigation }) {
       const result = await filterTransactions({
         date: customFilter?.date || todayStr,
         payment_method: customFilter?.payment_method || undefined,
-        status: customFilter?.status || undefined,
       });
       if (result.success) {
         const transactionData =
@@ -93,24 +281,36 @@ export default function TransactionScreen({ navigation }) {
     }
   };
 
-  const handlePaymentFilter = (value) => {
-    const newVal = activePaymentFilter === value ? '' : value;
-    setActivePaymentFilter(newVal);
-    loadTransactionsWithFilter({ date: todayStr, payment_method: newVal, status: activeStatusFilter });
+  const applyFilter = (date, paymentMethod) => {
+    loadTransactionsWithFilter({
+      date: formatDateToYYYYMMDD(date),
+      payment_method: paymentMethod,
+    });
   };
 
-  const handleStatusFilter = (value) => {
-    const newVal = activeStatusFilter === value ? '' : value;
-    setActiveStatusFilter(newVal);
-    loadTransactionsWithFilter({ date: todayStr, payment_method: activePaymentFilter, status: newVal });
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
+    setShowCalendar(false);
+    applyFilter(date, activePaymentFilter);
+  };
+
+  const handlePaymentChange = (value) => {
+    setActivePaymentFilter(value);
+    applyFilter(selectedDate, value);
+  };
+
+  const handleResetFilter = () => {
+    const today = new Date();
+    setSelectedDate(today);
+    setActivePaymentFilter('');
+    loadTransactionsWithFilter({ date: todayStr, payment_method: '' });
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadTransactionsWithFilter({
-      date: todayStr,
+      date: formatDateToYYYYMMDD(selectedDate),
       payment_method: activePaymentFilter,
-      status: activeStatusFilter,
     });
     setRefreshing(false);
   };
@@ -141,11 +341,10 @@ export default function TransactionScreen({ navigation }) {
 
   const paidCount = transactions.filter((t) => t.payment_status === 'paid').length;
 
-  // ── Tampilkan Struk ──────────────────────────────────────────────────────
+  // ── Tampilkan Struk ──
   const handleShowStruk = useCallback(async (transaction) => {
     setLoadingReceipt(true);
     try {
-      // Coba dari storage lokal dulu
       const stored = await getReceiptByInvoice(transaction.invoice_number);
       if (stored) {
         setSelectedReceipt(stored);
@@ -153,8 +352,6 @@ export default function TransactionScreen({ navigation }) {
         setLoadingReceipt(false);
         return;
       }
-
-      // Bangun langsung dari data transaksi yang ada (tanpa fetch API)
       const receiptData = buildReceiptData(
         { data: transaction },
         (transaction.items || []).map((item) => ({
@@ -186,7 +383,7 @@ export default function TransactionScreen({ navigation }) {
     }
   }, []);
 
-  // ── Transaction Card ─────────────────────────────────────────────────────
+  // ── Transaction Card ──
   const renderTransactionCard = ({ item, index }) => {
     if (!item) return null;
     const payColor = getPaymentColor(item.payment_method);
@@ -195,7 +392,6 @@ export default function TransactionScreen({ navigation }) {
 
     return (
       <View style={styles.transactionCard}>
-        {/* Top Row */}
         <View style={styles.cardTop}>
           <View style={styles.cardIndexBadge}>
             <Text style={styles.cardIndexText}>{String(index + 1).padStart(2, '0')}</Text>
@@ -216,7 +412,6 @@ export default function TransactionScreen({ navigation }) {
 
         <View style={styles.cardDivider} />
 
-        {/* Info Grid */}
         <View style={styles.cardGrid}>
           <View style={styles.cardGridItem}>
             <Text style={styles.gridLabel}>Customer</Text>
@@ -230,7 +425,6 @@ export default function TransactionScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Bottom Row */}
         <View style={styles.cardBottom}>
           <View style={[styles.paymentChip, { backgroundColor: payColor.bg }]}>
             <View style={[styles.paymentDot, { backgroundColor: payColor.dot }]} />
@@ -243,7 +437,6 @@ export default function TransactionScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* ── Tombol Cetak Struk ── */}
         <TouchableOpacity
           style={styles.printReceiptBtn}
           onPress={() => handleShowStruk(item)}
@@ -262,25 +455,12 @@ export default function TransactionScreen({ navigation }) {
     );
   };
 
-  const paymentFilters = [
-    { label: 'Semua', value: '' },
-    { label: 'Cash', value: 'cash' },
-    { label: 'QRIS', value: 'qris' },
-    { label: 'Transfer', value: 'transfer' },
-    { label: 'Debit', value: 'debit' },
-  ];
-  const statusFilters = [
-    { label: 'Semua', value: '' },
-    { label: 'Lunas', value: 'paid' },
-    { label: 'Pending', value: 'unpaid' },
-  ];
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.jet} />
       <View style={styles.container}>
 
-        {/* Header */}
+        {/* ── Header ── */}
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <View>
@@ -324,40 +504,64 @@ export default function TransactionScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Filter Chips */}
-        <View style={styles.filterSection}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            <Text style={styles.filterSectionLabel}>Bayar:</Text>
-            {paymentFilters.map((f) => {
-              const isActive = activePaymentFilter === f.value;
-              return (
-                <TouchableOpacity
-                  key={`pay-${f.value}`}
-                  style={[styles.filterChip, isActive && styles.filterChipActive]}
-                  onPress={() => handlePaymentFilter(f.value)}
-                >
-                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{f.label}</Text>
+        {/* ── Filter Panel ── */}
+        <View style={filterStyles.panel}>
+          {/* Panel header / toggle */}
+          <TouchableOpacity style={filterStyles.panelHeader} onPress={() => setFilterOpen(!filterOpen)}>
+            <View style={filterStyles.panelTitleRow}>
+              <Ionicons name="filter-outline" size={16} color={COLORS.filterText} />
+              <Text style={filterStyles.panelTitle}>Filter Transaksi</Text>
+            </View>
+            <View style={filterStyles.toggleBox}>
+              <Ionicons name={filterOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.filterMuted} />
+            </View>
+          </TouchableOpacity>
+
+          {filterOpen && (
+            <>
+              <View style={filterStyles.divider} />
+              <View style={filterStyles.body}>
+                {/* Tanggal */}
+                <View style={filterStyles.fieldGroup}>
+                  <Text style={filterStyles.fieldLabel}>Tanggal</Text>
+                  <TouchableOpacity
+                    style={filterStyles.dateInput}
+                    onPress={() => setShowCalendar(!showCalendar)}
+                  >
+                    <Text style={filterStyles.dateInputText}>
+                      {formatDateDisplay(selectedDate)}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={16} color={COLORS.filterMuted} />
+                  </TouchableOpacity>
+
+                  {/* Calendar popup */}
+                  {showCalendar && (
+                    <CustomCalendar
+                      selectedDate={selectedDate}
+                      onSelectDate={handleDateSelect}
+                      onClear={() => { setSelectedDate(null); setShowCalendar(false); applyFilter(null, activePaymentFilter); }}
+                      onToday={() => setShowCalendar(false)}
+                    />
+                  )}
+                </View>
+
+                {/* Metode Pembayaran */}
+                <View style={filterStyles.fieldGroup}>
+                  <Text style={filterStyles.fieldLabel}>Metode Pembayaran</Text>
+                  <PaymentDropdown value={activePaymentFilter} onSelect={handlePaymentChange} />
+                </View>
+
+                {/* Reset Button */}
+                <TouchableOpacity style={filterStyles.resetBtn} onPress={handleResetFilter}>
+                  <Ionicons name="refresh-outline" size={14} color={COLORS.filterText} />
+                  <Text style={filterStyles.resetBtnText}>Reset Filter</Text>
                 </TouchableOpacity>
-              );
-            })}
-            <View style={styles.filterSeparator} />
-            <Text style={styles.filterSectionLabel}>Status:</Text>
-            {statusFilters.map((f) => {
-              const isActive = activeStatusFilter === f.value;
-              return (
-                <TouchableOpacity
-                  key={`status-${f.value}`}
-                  style={[styles.filterChip, isActive && styles.filterChipActive]}
-                  onPress={() => handleStatusFilter(f.value)}
-                >
-                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{f.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+              </View>
+            </>
+          )}
         </View>
 
-        {/* Content */}
+        {/* ── Content ── */}
         {loading && transactions.length === 0 ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={COLORS.pumpkin} />
@@ -369,7 +573,7 @@ export default function TransactionScreen({ navigation }) {
               <Ionicons name="receipt-outline" size={40} color={COLORS.pumpkin} />
             </View>
             <Text style={styles.emptyTitle}>Belum ada transaksi</Text>
-            <Text style={styles.emptySubtitle}>Transaksi hari ini akan muncul di sini</Text>
+            <Text style={styles.emptySubtitle}>Tidak ada transaksi untuk filter yang dipilih</Text>
             <TouchableOpacity style={styles.newTransactionBtn} onPress={() => navigation.navigate('NewTransaction')}>
               <Ionicons name="add" size={18} color={COLORS.white} />
               <Text style={styles.newTransactionBtnText}>Buat Transaksi</Text>
@@ -394,7 +598,7 @@ export default function TransactionScreen({ navigation }) {
         )}
       </View>
 
-      {/* ── Struk Modal ─────────────────────────────────────────────────── */}
+      {/* ── Struk Modal ── */}
       <StrukModal
         visible={showStruk}
         receiptData={selectedReceipt}
@@ -405,6 +609,263 @@ export default function TransactionScreen({ navigation }) {
   );
 }
 
+// ─── Filter Panel Styles ──────────────────────────────────────────────────────
+const filterStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: COLORS.filterBg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.filterBorder,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  panelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  panelTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.filterText,
+  },
+  toggleBox: {
+    backgroundColor: COLORS.filterCard,
+    borderWidth: 1,
+    borderColor: COLORS.filterBorder,
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    minWidth: width * 0.6,
+    alignItems: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.filterBorder,
+  },
+  body: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'flex-end',
+  },
+  fieldGroup: {
+    flex: 1,
+    minWidth: 140,
+    position: 'relative',
+    zIndex: 10,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.filterMuted,
+    marginBottom: 6,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.filterCard,
+    borderWidth: 1,
+    borderColor: COLORS.filterBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  dateInputText: {
+    fontSize: 14,
+    color: COLORS.filterText,
+    fontWeight: '500',
+  },
+  resetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.filterCard,
+    borderWidth: 1,
+    borderColor: COLORS.filterBorder,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignSelf: 'flex-end',
+  },
+  resetBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.filterText,
+  },
+});
+
+// ─── Calendar Styles ──────────────────────────────────────────────────────────
+const calStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.filterCard,
+    borderWidth: 1,
+    borderColor: COLORS.filterBorder,
+    borderRadius: 12,
+    padding: 12,
+    zIndex: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  monthYear: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.filterText,
+  },
+  navRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  navBtn: {
+    padding: 4,
+  },
+  dayNames: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  dayName: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.filterMuted,
+    paddingVertical: 4,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  cell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  cellSelected: {
+    backgroundColor: COLORS.filterBorder,
+    borderWidth: 2,
+    borderColor: COLORS.filterText,
+  },
+  cellToday: {},
+  cellText: {
+    fontSize: 13,
+    color: COLORS.filterText,
+    fontWeight: '500',
+  },
+  cellTextOther: {
+    color: COLORS.filterMuted,
+    opacity: 0.5,
+  },
+  cellTextSelected: {
+    color: COLORS.filterText,
+    fontWeight: '700',
+  },
+  cellTextToday: {
+    color: '#60A5FA',
+    fontWeight: '700',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.filterBorder,
+  },
+  footerClear: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#60A5FA',
+  },
+  footerToday: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#60A5FA',
+  },
+});
+
+// ─── Dropdown Styles ──────────────────────────────────────────────────────────
+const dropStyles = StyleSheet.create({
+  wrapper: {
+    position: 'relative',
+    zIndex: 20,
+  },
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.filterCard,
+    borderWidth: 1,
+    borderColor: COLORS.filterBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  triggerOpen: {
+    borderColor: '#60A5FA',
+  },
+  triggerText: {
+    fontSize: 14,
+    color: COLORS.filterText,
+    fontWeight: '500',
+  },
+  menu: {
+    position: 'absolute',
+    top: 46,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.filterCard,
+    borderWidth: 1,
+    borderColor: COLORS.filterBorder,
+    borderRadius: 8,
+    zIndex: 999,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  menuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  menuItemActive: {
+    backgroundColor: '#374151',
+  },
+  menuItemText: {
+    fontSize: 14,
+    color: COLORS.filterText,
+    fontWeight: '500',
+  },
+  menuItemTextActive: {
+    fontWeight: '700',
+  },
+});
+
+// ─── Main Styles ──────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.jet },
   container: { flex: 1, backgroundColor: COLORS.linen },
@@ -433,14 +894,6 @@ const styles = StyleSheet.create({
   },
   actionBtnOutline: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: COLORS.pumpkin },
   actionBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
-  filterSection: { backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  filterScroll: { paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center', gap: 8 },
-  filterSectionLabel: { fontSize: 11, fontWeight: '700', color: COLORS.davysGray, textTransform: 'uppercase', letterSpacing: 0.5 },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.linen, borderWidth: 1.5, borderColor: COLORS.border },
-  filterChipActive: { backgroundColor: COLORS.pumpkin, borderColor: COLORS.pumpkin },
-  filterChipText: { fontSize: 12, fontWeight: '600', color: COLORS.davysGray },
-  filterChipTextActive: { color: COLORS.white },
-  filterSeparator: { width: 1, height: 20, backgroundColor: COLORS.border, marginHorizontal: 4 },
   listContent: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 100 },
   listHeader: { fontSize: 11, fontWeight: '700', color: COLORS.davysGray, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   transactionCard: {
@@ -466,8 +919,6 @@ const styles = StyleSheet.create({
   paymentDot: { width: 6, height: 6, borderRadius: 3 },
   paymentChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
   amountText: { fontSize: 16, fontWeight: '800', color: COLORS.jet },
-
-  // ── Tombol Cetak Struk ──
   printReceiptBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 8, borderRadius: 8,
@@ -475,7 +926,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: `${COLORS.pumpkin}33`,
   },
   printReceiptBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.pumpkin },
-
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingBottom: 80 },
   loadingText: { marginTop: 12, fontSize: 14, color: COLORS.davysGray, fontWeight: '500' },
   emptyIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: COLORS.pumpkinDim, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },

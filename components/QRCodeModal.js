@@ -6,10 +6,10 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Image,
   ScrollView,
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
+import QRCode from 'react-native-qrcode-svg';
 
 const QRCodeModal = ({ visible, onClose, product }) => {
   // Validasi produk
@@ -38,21 +38,6 @@ const QRCodeModal = ({ visible, onClose, product }) => {
     );
   }
 
-  // Generate QR Code URL
-  const generateQRCodeURL = () => {
-    if (!product) return null;
-
-    // Gunakan barcode jika ada, atau fallback ke ID produk
-    const qrData = product.barcode || `PRODUCT-${product.id}`;
-    
-    // Encode data untuk URL
-    const encodedData = encodeURIComponent(qrData);
-    
-    // URL API QR Code dengan timestamp untuk mencegah caching
-    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodedData}&t=${Date.now()}`;
-  };
-
-  const qrCodeUrl = generateQRCodeURL();
   const hasBarcode = product && product.barcode;
 
   return (
@@ -86,14 +71,7 @@ const QRCodeModal = ({ visible, onClose, product }) => {
 
                 {/* QR Code Image */}
                 <View style={styles.qrImageContainer}>
-                  <Image
-                    source={{ uri: qrCodeUrl }}
-                    style={styles.qrImage}
-                    onError={(error) => {
-                      console.error('Gagal memuat QR Code:', error.nativeEvent.error);
-                    }}
-                    resizeMode="contain"
-                  />
+                  <QRCode value={String(product.barcode)} size={250} />
                 </View>
 
                 {/* Additional Info */}
@@ -209,10 +187,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-  },
-  qrImage: {
-    width: 250,
-    height: 250,
   },
   infoBox: {
     flexDirection: 'row',

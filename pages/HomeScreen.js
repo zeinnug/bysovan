@@ -464,7 +464,12 @@ const HomeScreen = () => {
 
   useFocusEffect(useCallback(() => {
     console.log('Dashboard focused - refreshing data...');
-    fetchDashboardData();
+    const fetchTokenAndData = async () => {
+      const token = await AsyncStorage.getItem('userToken');
+      console.log('=== TOKEN ===', token);
+      fetchDashboardData();
+    };
+    fetchTokenAndData();
   }, [fetchDashboardData]));
 
   useEffect(() => {

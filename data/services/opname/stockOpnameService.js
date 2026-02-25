@@ -4,6 +4,7 @@
 
 import apiClient, { formatError, formatResponse } from '../../api';
 import { API_ENDPOINTS, PAGINATION } from '../../constants';
+import { updatePhysicalStock, saveStockOpnameReport } from '../inventoryService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ==================== CACHE KEY ====================
@@ -308,7 +309,7 @@ export const simpanLaporanOpname = async (semuaProduk) => {
       disimpanServer: false,
     };
 
-    // ── 5. KIRIM KE SERVER
+    // ── 5. KIRIM KE SERVER (selaras dengan flow web: update stok fisik + simpan laporan)
     let serverSuccess = false;
     let serverMessage = '';
 
@@ -317,19 +318,34 @@ export const simpanLaporanOpname = async (semuaProduk) => {
       console.warn('[stockOpnameService] Tidak ada item terscan, skip kirim server.');
     } else {
       try {
-        const response = await apiClient.put(API_ENDPOINTS.STOCK_OPNAME, { reports });
-        const result   = formatResponse(response);
+        // 5a. Update stok fisik per produk (best-effort, meniru /inventory/{id}/physical-stock di web)
+        for (const item of terscanArr) {
+          try {
+            await updatePhysicalStock(item.id, item.stokFisik ?? 0);
+          } catch (err) {
+            const detail = formatError(err);
+            console.warn(
+              `[stockOpnameService] Gagal update stok fisik produk ${item.id}:`,
+              detail.message || err.message
+            );
+          }
+        }
 
-        serverSuccess               = true;
-        serverMessage               = result.message || 'Laporan berhasil disimpan ke server.';
-        laporanCache.disimpanServer = true;
+        // 5b. Simpan laporan opname (meniru /inventory/inventory/save-report di web)
+        const result = await saveStockOpnameReport(reports);
 
-        console.log('[stockOpnameService] Laporan berhasil dikirim ke server:', serverMessage);
+        serverSuccess = !!result.success;
+        serverMessage = result.message || 'Laporan berhasil disimpan ke server.';
+        if (serverSuccess) {
+          laporanCache.disimpanServer = true;
+        }
+
+        console.log('[stockOpnameService] Laporan Stock Opname disimpan ke server:', serverMessage);
       } catch (serverErr) {
         const errDetail = formatError(serverErr);
         serverMessage   = errDetail.statusCode
           ? `Server error ${errDetail.statusCode}: ${errDetail.message}`
-          : 'Tidak dapat terhubung ke server.';
+          : errDetail.message || 'Tidak dapat terhubung ke server.';
         console.warn('[stockOpnameService] Gagal kirim ke server:', serverMessage);
       }
     }

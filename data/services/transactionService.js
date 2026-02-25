@@ -27,6 +27,8 @@ const getAxiosConfig = async () => {
 
 /**
  * Get all transactions
+ * Catatan: dipanggil tanpa parameter query khusus karena percobaan per_page besar
+ * menimbulkan error 500 di backend. Pagination/penyaringan dilakukan di sisi backend.
  */
 export const getTransactions = async () => {
   try {

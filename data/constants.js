@@ -37,6 +37,9 @@ export const API_ENDPOINTS = {
   TRANSACTIONS: '/transactions',
   TRANSACTION_BY_ID: (id) => `/transactions/${id}`,
   ADD_PRODUCT_BY_QR: (unitCode) => `/transactions/add-product/${unitCode}`,
+
+  // Users / Kasir (untuk filter laporan)
+  USERS: '/users',
 };
 
 // Payment Methods
