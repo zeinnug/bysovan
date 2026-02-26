@@ -2,66 +2,67 @@
 // ==================== CONSTANTS & CONFIGURATION ====================
 
 // API Base URL
-export const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
+export const API_BASE_URL = "https://testingaplikasi.tokosepatusovan.com/api";
 
 // Storage Keys
 export const STORAGE_KEYS = {
-  TOKEN: 'userToken',
-  USER_DATA: 'userData',
-  USER_ROLE: 'userRole',
-  REMEMBER_ME: 'rememberMe',
-  SAVED_EMAIL: 'savedEmail',
+  TOKEN: "userToken",
+  USER_DATA: "userData",
+  USER_ROLE: "userRole",
+  REMEMBER_ME: "rememberMe",
+  SAVED_EMAIL: "savedEmail",
 };
 
 // API Endpoints
 export const API_ENDPOINTS = {
   // Auth
-  LOGIN: '/auth/login',
-  LOGOUT: '/auth/logout',
-  PROFILE: '/auth/profile',
-  
+  LOGIN: "/auth/login",
+  LOGOUT: "/auth/logout",
+  PROFILE: "/auth/profile",
+
   // Dashboard
-  DASHBOARD: '/dashboard',
-  
+  DASHBOARD: "/dashboard",
+
   // Products/Inventory
-  PRODUCTS: '/products',
+  PRODUCTS: "/products",
   PRODUCT_BY_ID: (id) => `/products/${id}`,
-  PRODUCT_UNIT: (productId, unitCode) => `/products/${productId}/units/${unitCode}`,
-  STOCK_OPNAME: '/products/stock-opname',
-  UPDATE_PHYSICAL_STOCK: (id) => `/products/${id}/update-physical-stock`,
-  SAVE_STOCK_REPORT: '/products/stock-opname/save',
-  DELETE_STOCK_REPORT: (index) => `/products/stock-opname/${index}`,
-  DELETE_ALL_REPORTS: '/products/stock-opname',
-  
+  PRODUCT_UNIT: (productId, unitCode) =>
+    `/products/${productId}/units/${unitCode}`,
+  STOCK_OPNAME: "/stock-opname",
+  UPDATE_PHYSICAL_STOCK: (id) => `/products/${id}/physical-stock`,
+  SAVE_STOCK_REPORT: "/stock-opname/save",
+  DELETE_STOCK_REPORT: (index) => `/stock-opname/${index}`,
+  DELETE_ALL_REPORTS: "/stock-opname",
+
   // Transactions
-  TRANSACTIONS: '/transactions',
+  TRANSACTIONS: "/transactions",
   TRANSACTION_BY_ID: (id) => `/transactions/${id}`,
   ADD_PRODUCT_BY_QR: (unitCode) => `/transactions/add-product/${unitCode}`,
 
   // Users / Kasir (untuk filter laporan)
-  USERS: '/users',
+  USERS: "/users",
 };
 
 // Payment Methods
 export const PAYMENT_METHODS = {
-  CASH: 'cash',
-  QRIS: 'qris',
-  DEBIT: 'debit',
-  TRANSFER: 'transfer',
+  CASH: "cash",
+  QRIS: "qris",
+  DEBIT: "debit",
+  TRANSFER: "transfer",
 };
 
 // Card Types
 export const CARD_TYPES = {
-  MANDIRI: 'Mandiri',
-  BRI: 'BRI',
-  BCA: 'BCA',
+  MANDIRI: "Mandiri",
+  BRI: "BRI",
+  BCA: "BCA",
 };
 
 // Payment Status
 export const PAYMENT_STATUS = {
-  PAID: 'paid',
-  PENDING: 'pending',
-  CANCELLED: 'cancelled',
+  PAID: "paid",
+  PENDING: "pending",
+  CANCELLED: "cancelled",
 };
 
 // Request Timeout
@@ -75,9 +76,9 @@ export const PAGINATION = {
 
 // Date Format
 export const DATE_FORMAT = {
-  DISPLAY: 'DD-MM-YYYY HH:mm',
-  API: 'YYYY-MM-DD',
-  ISO: 'YYYY-MM-DDTHH:mm:ss',
+  DISPLAY: "DD-MM-YYYY HH:mm",
+  API: "YYYY-MM-DD",
+  ISO: "YYYY-MM-DDTHH:mm:ss",
 };
 
 export default {

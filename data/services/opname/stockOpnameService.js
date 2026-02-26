@@ -179,9 +179,19 @@ export const cocokkanQRDenganDaftar = (rawQR, daftarProduk) => {
   const { productId, unitCode } = parseQRCode(rawQR);
   const kode = unitCode || rawQR.trim();
 
-  const found = daftarProduk.find(
-    (p) => p.unitCode === kode || String(p.id) === String(productId)
-  );
+  // 1. Prioritas: cocokkan berdasarkan unitCode (paling akurat)
+  let found = daftarProduk.find((p) => p.unitCode === kode);
+
+  // 2. Fallback: cocokkan berdasarkan productId, prioritaskan yang belum discan
+  if (!found && productId) {
+    found =
+      daftarProduk.find(
+        (p) => String(p.id) === String(productId) && p.statusScan === 'belum'
+      ) ||
+      daftarProduk.find(
+        (p) => String(p.id) === String(productId)
+      );
+  }
 
   if (!found) {
     return {
@@ -318,39 +328,36 @@ export const simpanLaporanOpname = async (semuaProduk) => {
       console.warn('[stockOpnameService] Tidak ada item terscan, skip kirim server.');
     } else {
       try {
-        // 5a. Update stok fisik per produk (best-effort, meniru /inventory/{id}/physical-stock di web)
-        for (const item of terscanArr) {
-          try {
-            await updatePhysicalStock(item.id, item.stokFisik ?? 0);
-          } catch (err) {
-            const detail = formatError(err);
-            console.warn(
-              `[stockOpnameService] Gagal update stok fisik produk ${item.id}:`,
-              detail.message || err.message
-            );
+        // NOTE: updatePhysicalStock per item sudah tidak diperlukan — 
+        // backend /products/{id}/update-physical-stock hanya support GET.
+        // Semua update stok fisik dilakukan melalui batch endpoint stock opname.
+
+        // Simpan laporan opname — akan mencoba banyak endpoint
+        const result = await saveStockOpnameReport(reports);
+
+        if (result.serverEndpointMissing) {
+          // Backend belum punya write endpoint untuk stock opname
+          serverSuccess = false;
+          serverMessage = 'Server belum mendukung penyimpanan stock opname.';
+          console.warn('[stockOpnameService] Server endpoint tidak tersedia.');
+        } else {
+          serverSuccess = !!result.success;
+          serverMessage = result.message || 'Laporan berhasil disimpan ke server.';
+          if (serverSuccess) {
+            laporanCache.disimpanServer = true;
           }
         }
 
-        // 5b. Simpan laporan opname (meniru /inventory/inventory/save-report di web)
-        const result = await saveStockOpnameReport(reports);
-
-        serverSuccess = !!result.success;
-        serverMessage = result.message || 'Laporan berhasil disimpan ke server.';
-        if (serverSuccess) {
-          laporanCache.disimpanServer = true;
-        }
-
-        console.log('[stockOpnameService] Laporan Stock Opname disimpan ke server:', serverMessage);
+        console.log('[stockOpnameService] Hasil simpan:', serverMessage);
       } catch (serverErr) {
-        const errDetail = formatError(serverErr);
-        serverMessage   = errDetail.statusCode
-          ? `Server error ${errDetail.statusCode}: ${errDetail.message}`
-          : errDetail.message || 'Tidak dapat terhubung ke server.';
+        // err bisa formatted object atau Error
+        const errMsg = serverErr?.message || (typeof serverErr === 'object' ? JSON.stringify(serverErr) : String(serverErr));
+        serverMessage = errMsg || 'Tidak dapat terhubung ke server.';
         console.warn('[stockOpnameService] Gagal kirim ke server:', serverMessage);
       }
     }
 
-    // ── 6. SIMPAN CACHE LOKAL
+    // ── 6. SIMPAN CACHE LOKAL (selalu simpan, terlepas dari server)
     const cacheSaved = await saveLaporanToCache(laporanCache);
 
     if (!cacheSaved && !serverSuccess) {
@@ -365,7 +372,7 @@ export const simpanLaporanOpname = async (semuaProduk) => {
       serverSuccess,
       message:       serverSuccess
         ? serverMessage
-        : `${serverMessage} Laporan tetap tersimpan di perangkat.`,
+        : `Laporan tersimpan di perangkat.${serverMessage ? ' (' + serverMessage + ')' : ''}`,
       ringkasan,
       laporanId: laporanCache.id,
     };
@@ -414,44 +421,51 @@ export const hapusLaporanByIndex = async (index) => {
 // ==================== DEBUG: TEST ENDPOINT ====================
 
 export const testEndpoint = async () => {
-  const endpoints = [
-    { method: 'PUT', url: '/products/stock-opname' },
-    { method: 'POST', url: '/products/stock-opname' },
-    { method: 'PUT', url: '/stock-opname' },
-    { method: 'POST', url: '/stock-opname' },
-    { method: 'PUT', url: '/products/opname' },
-    { method: 'POST', url: '/products/opname' },
-  ];
-
-  // Gunakan data dummy statis untuk test
-  const payload = {
-    reports: [{
-      product_id: 2136,
-      unit_code: 'UNIT-2MDSIDJZ',
-      name: 'TEST',
-      size: '-',
-      color: '-',
-      system_stock: 9,
-      physical_stock: 9,
-      difference: 0,
-    }]
-  };
-
+  // Langkah 1: GET /products/stock-opname untuk melihat format data backend
   console.log('=== MULAI TEST ENDPOINT ===');
   
-  for (const ep of endpoints) {
-    try {
-      const fn = ep.method === 'PUT' ? apiClient.put : apiClient.post;
-      // Perhatikan: endpoint + payload
-      const res = await fn(ep.url, payload);
-      
-      console.log(`[TEST] ✅ ${ep.method} ${ep.url} → Status: ${res.status}`);
-      if (res.data) console.log('       Response:', JSON.stringify(res.data));
+  try {
+    console.log('[TEST] GET /products/stock-opname - melihat format respons...');
+    const getRes = await apiClient.get('/products/stock-opname');
+    console.log('[TEST] ✅ GET /products/stock-opname → Status:', getRes.status);
+    console.log('[TEST] Response keys:', Object.keys(getRes.data || {}));
+    console.log('[TEST] Response data:', JSON.stringify(getRes.data).substring(0, 500));
+  } catch (e) {
+    const status = e.response?.status ?? 'NO_RESPONSE';
+    console.log(`[TEST] ❌ GET /products/stock-opname → ${status}: ${e.response?.data?.message ?? e.message}`);
+  }
 
+  // Langkah 2: Test PUT /products/stock-opname dengan berbagai format payload
+  const payload = {
+    product_id: 2136,
+    unit_code: 'UNIT-2MDSIDJZ',
+    name: 'TEST',
+    size: '-',
+    color: '-',
+    system_stock: 9,
+    physical_stock: 9,
+    difference: 0,
+  };
+
+  const formats = [
+    { label: 'products[{id,...}]', data: { products: [{ id: payload.product_id, ...payload }] } },
+    { label: 'reports[...]', data: { reports: [payload] } },
+    { label: 'data[...]', data: { data: [{ id: payload.product_id, physical_stock: 9 }] } },
+    { label: 'items[...]', data: { items: [{ id: payload.product_id, physical_stock: 9 }] } },
+    { label: 'stock_opname[...]', data: { stock_opname: [{ product_id: payload.product_id, physical_stock: 9 }] } },
+  ];
+
+  for (const fmt of formats) {
+    try {
+      console.log(`[TEST] PUT /products/stock-opname [${fmt.label}]`);
+      const res = await apiClient.put('/products/stock-opname', fmt.data);
+      console.log(`[TEST] ✅ Format "${fmt.label}" → Status: ${res.status}`);
+      if (res.data) console.log('       Response:', JSON.stringify(res.data).substring(0, 300));
     } catch (e) {
       const status = e.response?.status ?? 'NO_RESPONSE';
       const msg = e.response?.data?.message ?? e.message;
-      console.log(`[TEST] ❌ ${ep.method} ${ep.url} → ${status}: ${msg}`);
+      const errors = e.response?.data?.errors ? JSON.stringify(e.response.data.errors) : '';
+      console.log(`[TEST] ❌ [${fmt.label}] → ${status}: ${msg} ${errors}`);
     }
   }
   
