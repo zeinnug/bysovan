@@ -17,6 +17,9 @@ import { Octicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
+// ✅ FIX 1: Import filterTransactions untuk hitung transaksi hari ini secara akurat
+import { filterTransactions } from '../data/services/transactionService';
+
 const { width } = Dimensions.get('window');
 const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
 
@@ -373,27 +376,65 @@ const HomeScreen = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // ✅ FIX 2: Helper format tanggal YYYY-MM-DD (sama persis dengan TransactionScreen)
+  const getTodayString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // ✅ FIX 3: Fungsi khusus untuk ambil jumlah transaksi hari ini yang akurat
+  // Menggunakan endpoint /transactions?date=YYYY-MM-DD yang sama dengan TransactionScreen
+  const fetchTodayTransactionCount = async () => {
+    try {
+      const result = await filterTransactions({
+        date: getTodayString(),
+      });
+
+      if (result.success) {
+        const transactionData =
+          result.data?.data?.transactions && Array.isArray(result.data.data.transactions)
+            ? result.data.data.transactions
+            : Array.isArray(result.data) ? result.data
+            : result.data?.transactions ? result.data.transactions
+            : [];
+
+        return transactionData.length;
+      }
+      return 0;
+    } catch (error) {
+      console.error('[HomeScreen] Error fetching today transaction count:', error);
+      return 0;
+    }
+  };
+
   const fetchDashboardData = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       if (!token) { Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.'); return; }
 
-      const response = await fetch(`${API_BASE_URL}/dashboard`, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      });
+      // ✅ FIX 4: Jalankan dashboard API dan hitung transaksi hari ini secara paralel
+      const [dashboardResponse, todayCount] = await Promise.all([
+        fetch(`${API_BASE_URL}/dashboard`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        }),
+        fetchTodayTransactionCount(),
+      ]);
 
-      const text = await response.text();
+      const text = await dashboardResponse.text();
       let data;
       try { data = JSON.parse(text); } catch { throw new Error('Server tidak mengembalikan JSON valid'); }
 
-      if (!response.ok) throw new Error(data.message || `Gagal mengambil data: ${response.status}`);
+      if (!dashboardResponse.ok) throw new Error(data.message || `Gagal mengambil data: ${dashboardResponse.status}`);
 
       const result = data.data || data;
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-
-      const todaysTransactions = (result.transaksi_terbaru || result.transaksiTerbaru || result.recent_transactions || [])
-        .filter(t => { const d = new Date(t.created_at || t.createdAt); d.setHours(0,0,0,0); return d.getTime() === today.getTime(); });
 
       const defaultWeekLabels = ['SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU', 'MINGGU'];
       const weeklyRaw = result.grafik_pengunjung || result.grafikPengunjung || result.weekly_visitors || result.pengunjung_mingguan || result.visitors_weekly || [];
@@ -413,7 +454,15 @@ const HomeScreen = () => {
       const parsedData = {
         totalProduk: result.total_produk || result.totalProduk || result.total_products || 0,
         pengunjungHariIni: result.pengunjung_hari_ini || result.pengunjungHariIni || 0,
-        transaksiHariIni: todaysTransactions.length,
+
+        // ✅ FIX 5: Prioritaskan field dari API, fallback ke hitungan akurat dari filterTransactions
+        transaksiHariIni: result.transaksi_hari_ini
+          ?? result.transaksiHariIni
+          ?? result.today_transactions_count
+          ?? result.today_transaction_count
+          ?? result.total_transactions_today
+          ?? todayCount, // ← hitungan akurat dari /transactions?date=today
+
         produkTerlaris: (result.produk_terlaris || result.produkTerlaris || result.top_products || []).map(item => ({
           name: (item.produk && (item.produk.nama || item.produk.name)) || (item.product && item.product.name) || item.nama_produk || item.product_name || item.namaProduct || item.nama || item.name || '-',
           quantity: parseInt(item.quantity ?? item.jumlah ?? item.units ?? 0) || 0,
@@ -435,8 +484,14 @@ const HomeScreen = () => {
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+
+      // Fallback: coba ambil minimal jumlah transaksi hari ini meski dashboard gagal
+      const todayCount = await fetchTodayTransactionCount();
+
       const dummyData = {
-        totalProduk: 245, pengunjungHariIni: 1234, transaksiHariIni: 8,
+        totalProduk: 245,
+        pengunjungHariIni: 1234,
+        transaksiHariIni: todayCount, // ✅ Tetap akurat meski dashboard error
         produkTerlaris: [
           { name: 'Nike Air Jordan 1', quantity: 45 },
           { name: 'Adidas Ultraboost', quantity: 30 },
@@ -464,16 +519,12 @@ const HomeScreen = () => {
 
   useFocusEffect(useCallback(() => {
     console.log('Dashboard focused - refreshing data...');
-    const fetchTokenAndData = async () => {
-      const token = await AsyncStorage.getItem('userToken');
-      console.log('=== TOKEN ===', token);
-      fetchDashboardData();
-    };
-    fetchTokenAndData();
+    fetchDashboardData();
   }, [fetchDashboardData]));
 
+  // ✅ FIX 6: Polling tiap 10 detik (lebih wajar dari 5 detik)
   useEffect(() => {
-    const interval = setInterval(fetchDashboardData, 5000);
+    const interval = setInterval(fetchDashboardData, 10000);
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
 
@@ -545,7 +596,7 @@ const HomeScreen = () => {
         >
           <StatCard title="Total Stok" value={dashboardData.totalProduk} icon="👟" delay={0} />
           <StatCard title="Pengunjung" value={dashboardData.pengunjungHariIni} icon="👥" delay={150} accent />
-          <StatCard title="Transaksi" value={dashboardData.transaksiHariIni || 0} icon="💰" delay={300} />
+          <StatCard title="Transaksi" value={dashboardData.transaksiHariIni} icon="💰" delay={300} />
         </ScrollView>
 
         {/* ── Charts ── */}
