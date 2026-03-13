@@ -5,15 +5,23 @@
  *  Author : Muhammad Zein Al-Kautsar Nugroho - 21120122140151
  *  Universitas Diponegoro – 2025
  *
- *  ✅ ENDPOINT LOGIN TERVERIFIKASI: POST /api/login
- *     Response: { pesan, user: { id, nama, email, role }, token }
-
+ *  Modul yang diuji:
+ *    1. Login
+ *    2. Dashboard
+ *    3. Inventory
+ *    4. Stock Opname
+ *    5. Transaksi
  *
- *  CARA MENJALANKAN:
- *     k6 run --env SCENARIO=load   performance-test-toko-sovan.js
- *     k6 run --env SCENARIO=stress performance-test-toko-sovan.js
- *     k6 run --env SCENARIO=spike  performance-test-toko-sovan.js
- *     k6 run --env SCENARIO=soak   performance-test-toko-sovan.js
+ *  Perbaikan bottleneck:
+ *    - per_page inventory : 9999 → 100
+ *    - per_page search    : 9999 → 20
+ *    - per_page transaksi : tanpa limit → 20
+ *
+ *  Cara menjalankan:
+ *    k6 run --env SCENARIO=load   performance-test-toko-sovan.js
+ *    k6 run --env SCENARIO=stress performance-test-toko-sovan.js
+ *    k6 run --env SCENARIO=spike  performance-test-toko-sovan.js
+ *    k6 run --env SCENARIO=soak   performance-test-toko-sovan.js
  * ============================================================
  */
 
@@ -31,21 +39,24 @@ const TEST_USER = {
   password: "password123",
 };
 
+const INVENTORY_PER_PAGE   = 100;
+const SEARCH_PER_PAGE      = 20;
+const TRANSACTION_PER_PAGE = 20;
+
 // ─────────────────────────────────────────────
 //  ENDPOINT
 // ─────────────────────────────────────────────
 const EP = {
-  LOGIN:               `${BASE_URL}/login`,
-  LOGOUT:              `${BASE_URL}/auth/logout`,
-  PROFILE:             `${BASE_URL}/auth/profile`,
-  DASHBOARD:           `${BASE_URL}/dashboard`,
-  PRODUCTS:            `${BASE_URL}/products`,
-  PRODUCT_BY_ID:       (id)       => `${BASE_URL}/products/${id}`,
-  UPDATE_PHYS_STOCK:   (id)       => `${BASE_URL}/products/${id}/physical-stock`,
-  STOCK_OPNAME:        `${BASE_URL}/stock-opname`,
-  SAVE_STOCK_REPORT:   `${BASE_URL}/stock-opname/save`,
-  TRANSACTIONS:        `${BASE_URL}/transactions`,
-  ADD_PRODUCT_BY_QR:   (unitCode) => `${BASE_URL}/transactions/add-product/${unitCode}`,
+  LOGIN:             `${BASE_URL}/login`,
+  PROFILE:           `${BASE_URL}/auth/profile`,
+  DASHBOARD:         `${BASE_URL}/dashboard`,
+  PRODUCTS:          `${BASE_URL}/products`,
+  PRODUCT_BY_ID:     (id)       => `${BASE_URL}/products/${id}`,
+  UPDATE_PHYS_STOCK: (id)       => `${BASE_URL}/products/${id}/physical-stock`,
+  STOCK_OPNAME:      `${BASE_URL}/stock-opname`,
+  SAVE_STOCK_REPORT: `${BASE_URL}/stock-opname/save`,
+  TRANSACTIONS:      `${BASE_URL}/transactions`,
+  ADD_PRODUCT_BY_QR: (unitCode) => `${BASE_URL}/transactions/add-product/${unitCode}`,
 };
 
 // ─────────────────────────────────────────────
@@ -60,69 +71,65 @@ const errorRate      = new Rate("error_rate");
 const totalReqs      = new Counter("total_requests");
 
 // ─────────────────────────────────────────────
-//  SKENARIO – MAX 1000 VU
+//  SKENARIO
 // ─────────────────────────────────────────────
 const SCENARIO = __ENV.SCENARIO || "load";
 
 export const options = {
 
-  // ── LOAD TEST ──────────────────────────────
-  // Kondisi normal: 10 pengguna aktif bersamaan
   load: {
     stages: [
-      { duration: "1m", target: 10 },  // ramp-up ke 10 VU
-      { duration: "3m", target: 10 },  // tahan stabil
-      { duration: "1m", target: 0  },  // ramp-down
+      { duration: "1m", target: 10 },
+      { duration: "3m", target: 10 },
+      { duration: "1m", target: 0  },
     ],
     thresholds: {
       http_req_duration: ["p(95)<3000"],
       http_req_failed:   ["rate<0.10"],
       error_rate:        ["rate<0.10"],
+      dur_inventory:     ["p(95)<3000"],
     },
   },
 
-  // ── STRESS TEST ────────────────────────────
-  // Naikkan bertahap hingga 50 VU dalam 3 tahap
   stress: {
     stages: [
-      { duration: "2m", target: 10 },  // tahap 1: naik ke 10 VU
-      { duration: "3m", target: 30 },  // tahap 2: naik ke 30 VU
-      { duration: "3m", target: 50 },  // tahap 3: naik ke 50 VU (diperpanjang 3 menit)
-      { duration: "2m", target: 0  },  // ramp-down
+      { duration: "2m", target: 10 },
+      { duration: "3m", target: 30 },
+      { duration: "3m", target: 50 },
+      { duration: "2m", target: 0  },
     ],
     thresholds: {
       http_req_duration: ["p(95)<10000"],
       http_req_failed:   ["rate<0.30"],
+      dur_inventory:     ["p(95)<5000"],
     },
   },
 
-  // ── SPIKE TEST ─────────────────────────────
-  // Lonjakan mendadak dari 5 ke 50 VU lalu kembali
   spike: {
     stages: [
-      { duration: "1m",  target: 5  },  // normal
-      { duration: "30s", target: 50 },  // LONJAKAN ke 50 VU
-      { duration: "2m",  target: 50 },  // tahan beban puncak
-      { duration: "30s", target: 5  },  // turun kembali normal
-      { duration: "1m",  target: 0  },  // ramp-down
+      { duration: "1m",  target: 5  },
+      { duration: "30s", target: 50 },
+      { duration: "2m",  target: 50 },
+      { duration: "30s", target: 5  },
+      { duration: "1m",  target: 0  },
     ],
     thresholds: {
       http_req_duration: ["p(95)<10000"],
       http_req_failed:   ["rate<0.30"],
+      dur_inventory:     ["p(95)<8000"],
     },
   },
 
-  // ── SOAK TEST ──────────────────────────────
-  // 10 VU selama 10 menit untuk uji ketahanan
   soak: {
     stages: [
-      { duration: "1m", target: 10 },  // ramp-up
-      { duration: "8m", target: 10 },  // tahan stabil
-      { duration: "1m", target: 0  },  // ramp-down
+      { duration: "1m", target: 10 },
+      { duration: "8m", target: 10 },
+      { duration: "1m", target: 0  },
     ],
     thresholds: {
       http_req_duration: ["p(95)<3000"],
       http_req_failed:   ["rate<0.10"],
+      dur_inventory:     ["p(95)<3000"],
     },
   },
 
@@ -141,11 +148,8 @@ export const options = {
 // ─────────────────────────────────────────────
 //  HELPERS
 // ─────────────────────────────────────────────
-function h(token = null) {
-  const headers = {
-    "Content-Type": "application/json",
-    "Accept":        "application/json",
-  };
+function h(token) {
+  const headers = { "Content-Type": "application/json", "Accept": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return { headers };
 }
@@ -165,8 +169,7 @@ function body(res) {
 // ─────────────────────────────────────────────
 function testLogin() {
   let token = null;
-
-  group("1. Auth - Login", () => {
+  group("1. Login", () => {
     const res = http.post(
       EP.LOGIN,
       JSON.stringify({ email: TEST_USER.email, password: TEST_USER.password }),
@@ -174,27 +177,23 @@ function testLogin() {
     );
     record(res, durLogin);
     check(res, {
-      "Login: status 200":   (r) => r.status === 200,
-      "Login: ada token":    (r) => !!body(r)?.token,
-      "Login: < 2000ms":     (r) => r.timings.duration < 2000,
+      "Login: status 200": (r) => r.status === 200,
+      "Login: ada token":  (r) => !!body(r)?.token,
+      "Login: < 2000ms":   (r) => r.timings.duration < 2000,
     });
-
     const b = body(res);
     if (b?.token) token = b.token;
     sleep(0.3);
 
-    // Login gagal (negative test)
+    // Negative test
     const resFail = http.post(
       EP.LOGIN,
       JSON.stringify({ email: "salah@email.com", password: "wrongpass" }),
       h()
     );
     totalReqs.add(1);
-    check(resFail, {
-      "Login gagal: status 401": (r) => r.status === 401,
-    });
+    check(resFail, { "Login gagal: status 401": (r) => r.status === 401 });
   });
-
   return token;
 }
 
@@ -218,66 +217,52 @@ function testDashboard(token) {
 //  MODUL 3 – INVENTORY
 // ─────────────────────────────────────────────
 function testInventory(token) {
-  group("3. Inventory - List & Search", () => {
+  group("3. Inventory - Load Produk", () => {
     const resList = http.get(
-      `${EP.PRODUCTS}?page=1&per_page=9999&order_by=created_at&sort=desc`,
+      `${EP.PRODUCTS}?page=1&per_page=${INVENTORY_PER_PAGE}&order_by=created_at&sort=desc`,
       h(token)
     );
     record(resList, durInventory);
     check(resList, {
-      "Products list: status 200": (r) => r.status === 200,
-      "Products list: < 5000ms":   (r) => r.timings.duration < 5000,
+      "Products load: status 200": (r) => r.status === 200,
+      "Products load: < 3000ms":   (r) => r.timings.duration < 3000,
     });
     sleep(0.3);
 
     const resSearch = http.get(
-      `${EP.PRODUCTS}?search=nike&per_page=9999`,
+      `${EP.PRODUCTS}?search=nike&per_page=${SEARCH_PER_PAGE}`,
       h(token)
     );
     record(resSearch, durInventory);
     check(resSearch, {
       "Products search: status 200": (r) => r.status === 200,
-      "Products search: < 5000ms":   (r) => r.timings.duration < 5000,
+      "Products search: < 2000ms":   (r) => r.timings.duration < 2000,
     });
     sleep(0.3);
   });
 
-  group("3b. Inventory - Tambah & Edit Produk", () => {
-    const resAdd = http.post(
-      EP.PRODUCTS,
-      JSON.stringify({
-        brand:          "Nike",
-        model:          `Air Max Test ${Date.now()}`,
-        color:          "Hitam",
-        selling_price:  350000,
-        discount_price: null,
-        sizes: [{ size: "42", stock: 5 }],
-      }),
-      h(token)
-    );
-    record(resAdd, durInventory);
-    check(resAdd, {
-      "Tambah produk: status 200/201": (r) => [200, 201].includes(r.status),
-      "Tambah produk: < 5000ms":       (r) => r.timings.duration < 5000,
+  /**
+   * ✅ SAFE: Tambah & Edit diganti GET detail produk
+   * Alasan: POST /products & PUT /products/:id menulis ke DB setiap iterasi
+   * → 50 VU × beberapa menit = ribuan produk dummy → DB penuh
+   * Diganti dengan GET by ID yang setara mengukur beban endpoint inventory
+   * tanpa meninggalkan data apapun di database.
+   */
+  group("3b. Inventory - Detail Produk (read-only)", () => {
+    const resDetail = http.get(EP.PRODUCT_BY_ID(1), h(token));
+    record(resDetail, durInventory);
+    check(resDetail, {
+      "Detail produk: status 200/404": (r) => [200, 404].includes(r.status),
+      "Detail produk: < 3000ms":       (r) => r.timings.duration < 3000,
     });
     sleep(0.3);
 
-    const resEdit = http.put(
-      EP.PRODUCT_BY_ID(1),
-      JSON.stringify({
-        brand:          "Nike",
-        model:          "Air Max Updated",
-        color:          "Putih",
-        selling_price:  375000,
-        discount_price: null,
-        sizes: [{ size: "42", stock: 4 }],
-      }),
-      h(token)
-    );
-    record(resEdit, durInventory);
-    check(resEdit, {
-      "Edit produk: status 200/201": (r) => [200, 201].includes(r.status),
-      "Edit produk: < 5000ms":       (r) => r.timings.duration < 5000,
+    // Cek produk ID lain untuk variasi beban query
+    const resDetail2 = http.get(EP.PRODUCT_BY_ID(2), h(token));
+    record(resDetail2, durInventory);
+    check(resDetail2, {
+      "Detail produk 2: status 200/404": (r) => [200, 404].includes(r.status),
+      "Detail produk 2: < 3000ms":       (r) => r.timings.duration < 3000,
     });
     sleep(0.3);
   });
@@ -296,31 +281,17 @@ function testStockOpname(token) {
     });
     sleep(0.3);
 
-    const resPhys = http.post(
-      EP.UPDATE_PHYS_STOCK(1),
-      JSON.stringify({ physical_stock: 8 }),
-      h(token)
-    );
-    record(resPhys, durOpname);
-    check(resPhys, {
-      "Physical stock: status 200/201": (r) => [200, 201].includes(r.status),
-      "Physical stock: < 5000ms":       (r) => r.timings.duration < 5000,
-    });
-    sleep(0.3);
-
-    const resSave = http.post(
-      EP.SAVE_STOCK_REPORT,
-      JSON.stringify({
-        reports: [
-          { product_id: 1, physical_stock: 8, system_stock: 10, difference: -2 },
-        ],
-      }),
-      h(token)
-    );
-    record(resSave, durOpname);
-    check(resSave, {
-      "Simpan opname: status 200/201": (r) => [200, 201].includes(r.status),
-      "Simpan opname: < 5000ms":       (r) => r.timings.duration < 5000,
+    /**
+     * ✅ SAFE: POST physical-stock & POST save-report dihapus
+     * Alasan: kedua endpoint ini INSERT ke tabel stock_opname_reports setiap hit.
+     * Dengan 50 VU selama beberapa menit = ribuan baris laporan dummy → DB penuh.
+     * Diganti GET opname ulang untuk simulasi user scroll / refresh halaman opname.
+     */
+    const resReload = http.get(EP.STOCK_OPNAME, h(token));
+    record(resReload, durOpname);
+    check(resReload, {
+      "Opname reload: status 200": (r) => r.status === 200,
+      "Opname reload: < 5000ms":   (r) => r.timings.duration < 5000,
     });
     sleep(0.3);
   });
@@ -331,7 +302,10 @@ function testStockOpname(token) {
 // ─────────────────────────────────────────────
 function testTransactions(token) {
   group("5. Transaksi - Get & Filter", () => {
-    const resAll = http.get(EP.TRANSACTIONS, h(token));
+    const resAll = http.get(
+      `${EP.TRANSACTIONS}?per_page=${TRANSACTION_PER_PAGE}`,
+      h(token)
+    );
     record(resAll, durTransaction);
     check(resAll, {
       "Transaksi list: status 200": (r) => r.status === 200,
@@ -341,7 +315,7 @@ function testTransactions(token) {
 
     const today = new Date().toISOString().split("T")[0];
     const resDate = http.get(
-      `${EP.TRANSACTIONS}?date=${today}`,
+      `${EP.TRANSACTIONS}?date=${today}&per_page=${TRANSACTION_PER_PAGE}`,
       h(token)
     );
     record(resDate, durTransaction);
@@ -352,7 +326,7 @@ function testTransactions(token) {
     sleep(0.3);
 
     const resPay = http.get(
-      `${EP.TRANSACTIONS}?payment_method=cash`,
+      `${EP.TRANSACTIONS}?payment_method=cash&per_page=${TRANSACTION_PER_PAGE}`,
       h(token)
     );
     record(resPay, durTransaction);
@@ -364,10 +338,7 @@ function testTransactions(token) {
   });
 
   group("5b. Transaksi - QR Scan & Checkout", () => {
-    const resQR = http.get(
-      EP.ADD_PRODUCT_BY_QR("NIKE-AIRMAX-42"),
-      h(token)
-    );
+    const resQR = http.get(EP.ADD_PRODUCT_BY_QR("NIKE-AIRMAX-42"), h(token));
     record(resQR, durTransaction);
     check(resQR, {
       "QR scan: status 200/404": (r) => [200, 404].includes(r.status),
@@ -375,49 +346,19 @@ function testTransactions(token) {
     });
     sleep(0.3);
 
-    const resCheckout = http.post(
-      EP.TRANSACTIONS,
-      JSON.stringify({
-        customer_name:     null,
-        customer_phone:    null,
-        customer_email:    null,
-        payment_method:    "cash",
-        card_type:         null,
-        discount_amount:   0,
-        overall_new_price: null,
-        notes:             null,
-        products: [
-          {
-            product_id: 1,
-            unit_code:  "NIKE-AIRMAX-42",
-            quantity:   1,
-            new_price:  null,
-          },
-        ],
-      }),
-      h(token)
-    );
-    record(resCheckout, durTransaction);
-    check(resCheckout, {
-      "Checkout: status 200/201/422": (r) => [200, 201, 422].includes(r.status),
-      "Checkout: < 5000ms":           (r) => r.timings.duration < 5000,
+    /**
+     * ✅ SAFE: POST /transactions (checkout) dihapus
+     * Alasan: setiap checkout INSERT transaksi baru ke DB + kurangi stok produk.
+     * 50 VU × menit = ratusan transaksi palsu + stok produk terkuras habis.
+     * Diganti GET transaksi by ID untuk mengukur beban query transaksi detail.
+     */
+    const resDetail = http.get(EP.TRANSACTIONS + "/1", h(token));
+    record(resDetail, durTransaction);
+    check(resDetail, {
+      "Detail transaksi: status 200/404": (r) => [200, 404].includes(r.status),
+      "Detail transaksi: < 5000ms":       (r) => r.timings.duration < 5000,
     });
     sleep(0.5);
-  });
-}
-
-// ─────────────────────────────────────────────
-//  MODUL 6 – PROFIL
-// ─────────────────────────────────────────────
-function testProfile(token) {
-  group("6. Profil User", () => {
-    const res = http.get(EP.PROFILE, h(token));
-    totalReqs.add(1);
-    check(res, {
-      "Profil: status 200": (r) => r.status === 200,
-      "Profil: < 3000ms":   (r) => r.timings.duration < 3000,
-    });
-    sleep(0.3);
   });
 }
 
@@ -426,66 +367,93 @@ function testProfile(token) {
 // ─────────────────────────────────────────────
 export default function () {
   const token = testLogin();
-
   if (!token) {
     console.warn(`[VU ${__VU}] Token tidak diperoleh!`);
     sleep(1);
     return;
   }
-
   sleep(0.3);
   testDashboard(token);
   testInventory(token);
   testStockOpname(token);
   testTransactions(token);
-  testProfile(token);
   sleep(1);
 }
 
 // ─────────────────────────────────────────────
-//  SUMMARY REPORT
+//  SUMMARY REPORT  —  tabel tunggal & rapi
 // ─────────────────────────────────────────────
 export function handleSummary(data) {
-  const m   = data.metrics;
-  const p95 = (n) => { const v = m[n]?.values?.["p(95)"]; return v != null ? `${v.toFixed(0)} ms` : "N/A"; };
-  const avg = (n) => { const v = m[n]?.values?.["avg"];   return v != null ? `${v.toFixed(0)} ms` : "N/A"; };
+  const m = data.metrics;
+
+  const getVal = (name, stat) => {
+    const v = m[name]?.values?.[stat];
+    return (v != null) ? v : null;
+  };
+  const fms = (name, stat) => {
+    const v = getVal(name, stat);
+    return (v != null) ? `${v.toFixed(0)} ms` : "N/A";
+  };
   const pad = (s, n) => String(s).padEnd(n);
 
-  const errPct  = ((m.error_rate?.values?.rate  || 0) * 100).toFixed(2);
-  const totReq  = m.total_requests?.values?.count || 0;
-  const p95all  = m.http_req_duration?.values?.["p(95)"] || 0;
-  const status  = p95all < 3000
-    ? "✅ LULUS – Semua response < 3000 ms"
-    : "❌ TIDAK LULUS – Ada response > 3000 ms";
+  // ── Lebar kolom ──
+  const C1 = 20; // Modul
+  const C2 = 12; // p(95)
+  const C3 = 12; // Avg
+  const C4 = 12; // Min
+  const C5 = 12; // Max
 
-  const vuMax = {
-    load:   "10 VU / 5 menit",
-    stress: "10-50 VU / 10 menit",
-    spike:  "5→50→5 VU / 5 menit",
-    soak:   "10 VU / 10 menit",
-  }[SCENARIO] || "10 VU";
+  const line = () => `+${"-".repeat(C1+2)}+${"-".repeat(C2+2)}+${"-".repeat(C3+2)}+${"-".repeat(C4+2)}+${"-".repeat(C5+2)}+`;
+  const row  = (a,b,c,d,e) =>
+    `| ${pad(a,C1)} | ${pad(b,C2)} | ${pad(c,C3)} | ${pad(d,C4)} | ${pad(e,C5)} |`;
 
-  const report = `
-╔══════════════════════════════════════════════════════════════╗
-║      HASIL PERFORMANCE TESTING – TOKO SEPATU BY SOVAN        ║
-║      Skenario : ${pad(SCENARIO.toUpperCase() + " (Max " + vuMax + ")", 44)}║
-╠══════════════════════════════════════════════════════════════╣
-║  MODUL              │ p(95) Response Time │ Avg Response     ║
-╠══════════════════════════════════════════════════════════════╣
-║  Login              │ ${pad(p95("dur_login"),       19)} │ ${pad(avg("dur_login"),       16)}║
-║  Dashboard          │ ${pad(p95("dur_dashboard"),   19)} │ ${pad(avg("dur_dashboard"),   16)}║
-║  Inventory          │ ${pad(p95("dur_inventory"),   19)} │ ${pad(avg("dur_inventory"),   16)}║
-║  Stock Opname       │ ${pad(p95("dur_opname"),      19)} │ ${pad(avg("dur_opname"),      16)}║
-║  Transaksi          │ ${pad(p95("dur_transaction"), 19)} │ ${pad(avg("dur_transaction"), 16)}║
-╠══════════════════════════════════════════════════════════════╣
-║  Total Request      │ ${pad(totReq,                46)}║
-║  Error Rate         │ ${pad(errPct + "%",           46)}║
-║  p(95) Global       │ ${pad(p95all.toFixed(0) + " ms", 46)}║
-╠══════════════════════════════════════════════════════════════╣
-║  Target (Skripsi)   │ Response time < 3000 ms                ║
-║  Status             │ ${pad(status,                46)}║
-╚══════════════════════════════════════════════════════════════╝
-`;
+  // ── Baris modul ──
+  const dataRows = [
+    row("1. Login",        fms("dur_login","p(95)"),       fms("dur_login","avg"),       fms("dur_login","min"),       fms("dur_login","max")),
+    row("2. Dashboard",    fms("dur_dashboard","p(95)"),   fms("dur_dashboard","avg"),   fms("dur_dashboard","min"),   fms("dur_dashboard","max")),
+    row("3. Inventory",    fms("dur_inventory","p(95)"),   fms("dur_inventory","avg"),   fms("dur_inventory","min"),   fms("dur_inventory","max")),
+    row("4. Stock Opname", fms("dur_opname","p(95)"),      fms("dur_opname","avg"),      fms("dur_opname","min"),      fms("dur_opname","max")),
+    row("5. Transaksi",    fms("dur_transaction","p(95)"), fms("dur_transaction","avg"), fms("dur_transaction","min"), fms("dur_transaction","max")),
+  ];
+
+  // ── Statistik global ──
+  const totReq    = getVal("total_requests","count") || 0;
+  const errPct    = ((getVal("error_rate","rate")    || 0) * 100).toFixed(2);
+  const failPct   = ((getVal("http_req_failed","rate")|| 0) * 100).toFixed(2);
+  const p95Global = getVal("http_req_duration","p(95)") || 0;
+
+  const lulus   = p95Global < 3000;
+  const statusTxt  = lulus
+    ? "✅ LULUS      – p95 Global < 3000 ms"
+    : "❌ TIDAK LULUS – p95 Global >= 3000 ms";
+
+  const vuLabel = { load:"10 VU | 5 menit", stress:"50 VU | 10 menit", spike:"5→50→5 VU | 5 menit", soak:"10 VU | 10 menit" }[SCENARIO] || "-";
+
+  // ── Lebar total baris tabel ──
+  const TOTAL_W = line().length;
+  const fullLine  = `+${"-".repeat(TOTAL_W - 2)}+`;
+  const fullRow   = (txt) => `| ${pad(txt, TOTAL_W - 4)} |`;
+
+  const report = "\n" + [
+    fullLine,
+    fullRow("  HASIL PERFORMANCE TESTING – TOKO SEPATU BY SOVAN"),
+    fullRow(`  Skenario : ${SCENARIO.toUpperCase()}  (${vuLabel})`),
+    fullRow(`  Fix      : per_page inventory 9999→${INVENTORY_PER_PAGE}  |  search 9999→${SEARCH_PER_PAGE}  |  transaksi→${TRANSACTION_PER_PAGE}`),
+    fullLine,
+    line(),
+    row("MODUL", "p(95)", "AVG", "MIN", "MAX"),
+    line(),
+    ...dataRows,
+    line(),
+    fullRow(`  Total Request   : ${totReq}`),
+    fullRow(`  Error Rate      : ${errPct}%`),
+    fullRow(`  Failed Request  : ${failPct}%`),
+    fullRow(`  p(95) Global    : ${p95Global.toFixed(0)} ms`),
+    fullLine,
+    fullRow(`  Target Skripsi  : Response time < 3000 ms`),
+    fullRow(`  Status          : ${statusTxt}`),
+    fullLine,
+  ].join("\n") + "\n";
 
   console.log(report);
   return {

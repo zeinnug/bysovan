@@ -1,140 +1,191 @@
 {
   "root_group": {
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
     "groups": [
       {
-        "groups": [],
-        "checks": [
-            {
-              "name": "Login: status 200",
-              "path": "::1. Auth - Login::Login: status 200",
-              "id": "eabcc99f9e2d200240b9d5f907c0c867",
-              "passes": 47,
-              "fails": 0
-            },
-            {
-              "id": "7317c1535a632a79bd0477cd3c64c845",
-              "passes": 47,
-              "fails": 0,
-              "name": "Login: ada token",
-              "path": "::1. Auth - Login::Login: ada token"
-            },
-            {
-              "name": "Login: < 2000ms",
-              "path": "::1. Auth - Login::Login: < 2000ms",
-              "id": "d5f34d2e7798604bce9621149a4133db",
-              "passes": 47,
-              "fails": 0
-            },
-            {
-              "name": "Login gagal: status 401",
-              "path": "::1. Auth - Login::Login gagal: status 401",
-              "id": "9fbe642c6eb620bd103751a4140f8eb6",
-              "passes": 47,
-              "fails": 0
-            }
-          ],
-        "name": "1. Auth - Login",
-        "path": "::1. Auth - Login",
-        "id": "94e8635e61f190ddb19cf7f20431535b"
-      },
-      {
         "checks": [
           {
-            "name": "Dashboard: status 200",
-            "path": "::2. Dashboard::Dashboard: status 200",
-            "id": "363d0d73bcb794dc906f9f5c3ce59156",
-            "passes": 47,
-            "fails": 0
+            "name": "Login: status 200",
+            "path": "::1. Auth - Login::Login: status 200",
+            "id": "eabcc99f9e2d200240b9d5f907c0c867",
+            "passes": 270,
+            "fails": 1144
           },
           {
-            "passes": 47,
-            "fails": 0,
-            "name": "Dashboard: ada data",
-            "path": "::2. Dashboard::Dashboard: ada data",
-            "id": "935214afce9921ab3e298e9b7c9f9dd0"
+            "id": "7317c1535a632a79bd0477cd3c64c845",
+            "passes": 270,
+            "fails": 1144,
+            "name": "Login: ada token",
+            "path": "::1. Auth - Login::Login: ada token"
           },
           {
-            "passes": 47,
-            "fails": 0,
-            "name": "Dashboard: < 2000ms",
-            "path": "::2. Dashboard::Dashboard: < 2000ms",
-            "id": "6adc35719d14a65a5121153987d31225"
+            "name": "Login: < 2000ms",
+            "path": "::1. Auth - Login::Login: < 2000ms",
+            "id": "d5f34d2e7798604bce9621149a4133db",
+            "passes": 1309,
+            "fails": 105
+          },
+          {
+            "passes": 269,
+            "fails": 1145,
+            "name": "Login gagal: status 401",
+            "path": "::1. Auth - Login::Login gagal: status 401",
+            "id": "9fbe642c6eb620bd103751a4140f8eb6"
           }
         ],
-        "name": "2. Dashboard",
-        "path": "::2. Dashboard",
-        "id": "8fa4729c61c42c2dd49d0c71cf24765a",
+        "name": "1. Auth - Login",
+        "path": "::1. Auth - Login",
+        "id": "94e8635e61f190ddb19cf7f20431535b",
         "groups": []
       },
       {
+        "name": "0. Server Health Check",
+        "path": "::0. Server Health Check",
+        "id": "bb3f0fddc291f45beb0784be9f08f4fc",
+        "groups": [],
+        "checks": []
+      },
+      {
+        "name": "2. Dashboard",
+        "path": "::2. Dashboard",
+        "id": "8fa4729c61c42c2dd49d0c71cf24765a",
         "groups": [],
         "checks": [
             {
-              "path": "::3. Inventory - List & Search::Products list: status 200",
-              "id": "629efabc3f8a64c07516390211971efe",
-              "passes": 0,
-              "fails": 46,
-              "name": "Products list: status 200"
+              "passes": 266,
+              "fails": 4,
+              "name": "Dashboard: status 200",
+              "path": "::2. Dashboard::Dashboard: status 200",
+              "id": "363d0d73bcb794dc906f9f5c3ce59156"
             },
             {
-              "id": "2553211b40e4d1a160814b25040fab70",
-              "passes": 0,
-              "fails": 46,
-              "name": "Products list: < 5000ms",
-              "path": "::3. Inventory - List & Search::Products list: < 5000ms"
+              "name": "Dashboard: ada data",
+              "path": "::2. Dashboard::Dashboard: ada data",
+              "id": "935214afce9921ab3e298e9b7c9f9dd0",
+              "passes": 266,
+              "fails": 4
             },
             {
-              "name": "Products search: status 200",
-              "path": "::3. Inventory - List & Search::Products search: status 200",
-              "id": "3696cdabfea662677ba631a04f0c051a",
-              "passes": 0,
-              "fails": 43
-            },
-            {
-              "id": "7f715490ce5513f00fc9d7bf1230b8b0",
-              "passes": 1,
-              "fails": 42,
-              "name": "Products search: < 5000ms",
-              "path": "::3. Inventory - List & Search::Products search: < 5000ms"
+              "name": "Dashboard: < 2000ms",
+              "path": "::2. Dashboard::Dashboard: < 2000ms",
+              "id": "6adc35719d14a65a5121153987d31225",
+              "passes": 267,
+              "fails": 3
             }
-          ],
-        "name": "3. Inventory - List & Search",
-        "path": "::3. Inventory - List & Search",
-        "id": "e4e2542a66aca050084cda7cc8bc94b6"
+          ]
       },
       {
-        "name": "3b. Inventory - Tambah & Edit Produk",
-        "path": "::3b. Inventory - Tambah & Edit Produk",
-        "id": "82109d59e82f1ec34d621663cde4a4b4",
+        "name": "3. Inventory - Initial Load (per_page=100)",
+        "path": "::3. Inventory - Initial Load (per_page=100)",
+        "id": "66b7083b41fa5c0fe9a011ec9f8eee0c",
+        "groups": [],
+        "checks": [
+            {
+              "path": "::3. Inventory - Initial Load (per_page=100)::Products load: status 200",
+              "id": "80570eb0e63c963736e84bd7565f944c",
+              "passes": 262,
+              "fails": 8,
+              "name": "Products load: status 200"
+            },
+            {
+              "name": "Products load: ada produk",
+              "path": "::3. Inventory - Initial Load (per_page=100)::Products load: ada produk",
+              "id": "3d37182c73e83b504b9745ccc5c46a7f",
+              "passes": 262,
+              "fails": 8
+            },
+            {
+              "fails": 26,
+              "name": "Products load: < 3000ms",
+              "path": "::3. Inventory - Initial Load (per_page=100)::Products load: < 3000ms",
+              "id": "3d61b462b1936b1d9cc4710a17fba591",
+              "passes": 244
+            },
+            {
+              "name": "Products page 2: status 200/404",
+              "path": "::3. Inventory - Initial Load (per_page=100)::Products page 2: status 200/404",
+              "id": "7f38785d194f7a44c038c1b714d1130b",
+              "passes": 259,
+              "fails": 10
+            },
+            {
+              "id": "1c760c84d331edc6bec74f2bd6b7c731",
+              "passes": 221,
+              "fails": 48,
+              "name": "Products page 2: < 2000ms",
+              "path": "::3. Inventory - Initial Load (per_page=100)::Products page 2: < 2000ms"
+            }
+          ]
+      },
+      {
+        "id": "eb3b251d229df127e12690c1f2bcd256",
+        "groups": [],
+        "checks": [
+            {
+              "path": "::3b. Inventory - Search & Filter (per_page=20)::Products search Nike: status 200",
+              "id": "95677dbe2800d63895a927a1a492aba1",
+              "passes": 257,
+              "fails": 12,
+              "name": "Products search Nike: status 200"
+            },
+            {
+              "name": "Products search Nike: < 2000ms",
+              "path": "::3b. Inventory - Search & Filter (per_page=20)::Products search Nike: < 2000ms",
+              "id": "acdca745539d4ca80d337c13333378b4",
+              "passes": 250,
+              "fails": 19
+            },
+            {
+              "name": "Products search Skechers: status 200",
+              "path": "::3b. Inventory - Search & Filter (per_page=20)::Products search Skechers: status 200",
+              "id": "580df7cf10451feae2494b98764efea3",
+              "passes": 256,
+              "fails": 13
+            },
+            {
+              "path": "::3b. Inventory - Search & Filter (per_page=20)::Products search Skechers: < 2000ms",
+              "id": "258609c4cc0a4283a7fcb0dd6e8b40b4",
+              "passes": 258,
+              "fails": 11,
+              "name": "Products search Skechers: < 2000ms"
+            }
+          ],
+        "name": "3b. Inventory - Search & Filter (per_page=20)",
+        "path": "::3b. Inventory - Search & Filter (per_page=20)"
+      },
+      {
+        "name": "3c. Inventory - Tambah & Edit Produk",
+        "path": "::3c. Inventory - Tambah & Edit Produk",
+        "id": "b2627fadcbee967675e5c12531edf94e",
         "groups": [],
         "checks": [
             {
               "name": "Tambah produk: status 200/201",
-              "path": "::3b. Inventory - Tambah & Edit Produk::Tambah produk: status 200/201",
-              "id": "4edc819e5528bcb0dab619f89e8c1ccb",
-              "passes": 43,
-              "fails": 0
+              "path": "::3c. Inventory - Tambah & Edit Produk::Tambah produk: status 200/201",
+              "id": "d5be76462710c8a7c538ca21004ad5d6",
+              "passes": 254,
+              "fails": 14
             },
             {
+              "fails": 0,
               "name": "Tambah produk: < 5000ms",
-              "path": "::3b. Inventory - Tambah & Edit Produk::Tambah produk: < 5000ms",
-              "id": "769a913c692bc696eb131a9bfa5d0ff6",
-              "passes": 37,
-              "fails": 6
+              "path": "::3c. Inventory - Tambah & Edit Produk::Tambah produk: < 5000ms",
+              "id": "748b79616c0749a6760f1f0dbac8c7da",
+              "passes": 268
             },
             {
               "name": "Edit produk: status 200/201",
-              "path": "::3b. Inventory - Tambah & Edit Produk::Edit produk: status 200/201",
-              "id": "2804573050b8755b329f8126c09b3f9b",
+              "path": "::3c. Inventory - Tambah & Edit Produk::Edit produk: status 200/201",
+              "id": "33a1f3d2d890da182371afb46b79dbc0",
               "passes": 0,
-              "fails": 43
+              "fails": 268
             },
             {
+              "passes": 268,
+              "fails": 0,
               "name": "Edit produk: < 5000ms",
-              "path": "::3b. Inventory - Tambah & Edit Produk::Edit produk: < 5000ms",
-              "id": "eb22a178943778650a63606891fa01a0",
-              "passes": 43,
-              "fails": 0
+              "path": "::3c. Inventory - Tambah & Edit Produk::Edit produk: < 5000ms",
+              "id": "3b8f4ce190d1bf03bb6cd7f027030003"
             }
           ]
       },
@@ -148,159 +199,158 @@
               "name": "Opname load: status 200",
               "path": "::4. Stock Opname::Opname load: status 200",
               "id": "5041845155b7f760460b88bc2b8e8c48",
-              "passes": 43,
-              "fails": 0
+              "passes": 250,
+              "fails": 17
             },
             {
+              "passes": 245,
+              "fails": 22,
+              "name": "Opname load: < 5000ms",
               "path": "::4. Stock Opname::Opname load: < 5000ms",
-              "id": "1169f75bc2f3333552fe52cc94a1a2e1",
-              "passes": 38,
-              "fails": 5,
-              "name": "Opname load: < 5000ms"
+              "id": "1169f75bc2f3333552fe52cc94a1a2e1"
             },
             {
+              "fails": 266,
+              "name": "Physical stock: status 200/201",
               "path": "::4. Stock Opname::Physical stock: status 200/201",
               "id": "02bdc41165daa98476bacf840298cf44",
-              "passes": 0,
-              "fails": 43,
-              "name": "Physical stock: status 200/201"
+              "passes": 0
             },
             {
               "name": "Physical stock: < 5000ms",
               "path": "::4. Stock Opname::Physical stock: < 5000ms",
               "id": "f7840cc63bb4ca9555df31c4458e15ed",
-              "passes": 43,
-              "fails": 0
+              "passes": 263,
+              "fails": 3
             },
             {
+              "passes": 0,
+              "fails": 265,
               "name": "Simpan opname: status 200/201",
               "path": "::4. Stock Opname::Simpan opname: status 200/201",
-              "id": "a9730ff5717811dc1815bac8f8858162",
-              "passes": 0,
-              "fails": 43
+              "id": "a9730ff5717811dc1815bac8f8858162"
             },
             {
-              "path": "::4. Stock Opname::Simpan opname: < 5000ms",
-              "id": "17ca4c897ab9dfea454326df0f206e0c",
-              "passes": 43,
+              "passes": 265,
               "fails": 0,
-              "name": "Simpan opname: < 5000ms"
+              "name": "Simpan opname: < 5000ms",
+              "path": "::4. Stock Opname::Simpan opname: < 5000ms",
+              "id": "17ca4c897ab9dfea454326df0f206e0c"
             }
           ]
       },
       {
-        "path": "::5. Transaksi - Get & Filter",
-        "id": "ddde5c6aec2b0c6838486bbfa4436a1d",
+        "name": "5. Transaksi - Get & Filter (per_page=20)",
+        "path": "::5. Transaksi - Get & Filter (per_page=20)",
+        "id": "7f7967765eb995a4e19dd72b48129f2e",
         "groups": [],
         "checks": [
             {
               "name": "Transaksi list: status 200",
-              "path": "::5. Transaksi - Get & Filter::Transaksi list: status 200",
-              "id": "315be754efa1441da9e8727f23914334",
-              "passes": 43,
-              "fails": 0
+              "path": "::5. Transaksi - Get & Filter (per_page=20)::Transaksi list: status 200",
+              "id": "cfd668122e8805bad602ff0d1828a122",
+              "passes": 246,
+              "fails": 19
             },
             {
-              "id": "2a18d5fce8405828d8b3e9008d4c7742",
-              "passes": 43,
-              "fails": 0,
+              "id": "bdcbd3f44703bdca700b1ca79b3a27a1",
+              "passes": 259,
+              "fails": 6,
               "name": "Transaksi list: < 5000ms",
-              "path": "::5. Transaksi - Get & Filter::Transaksi list: < 5000ms"
+              "path": "::5. Transaksi - Get & Filter (per_page=20)::Transaksi list: < 5000ms"
             },
             {
-              "fails": 0,
+              "id": "bc6394b4e2f4b83c904d480d660beec0",
+              "passes": 245,
+              "fails": 20,
               "name": "Filter tanggal: status 200",
-              "path": "::5. Transaksi - Get & Filter::Filter tanggal: status 200",
-              "id": "ee6c95a22110f3f0332982711ff102f2",
-              "passes": 42
+              "path": "::5. Transaksi - Get & Filter (per_page=20)::Filter tanggal: status 200"
             },
             {
-              "name": "Filter tanggal: < 5000ms",
-              "path": "::5. Transaksi - Get & Filter::Filter tanggal: < 5000ms",
-              "id": "1a90cc48d08b2206c242152cebdc67fe",
-              "passes": 42,
-              "fails": 0
-            },
-            {
-              "name": "Filter payment: status 200",
-              "path": "::5. Transaksi - Get & Filter::Filter payment: status 200",
-              "id": "62fc80bb6960f4d42ce781ddf43f1784",
-              "passes": 42,
-              "fails": 0
-            },
-            {
-              "path": "::5. Transaksi - Get & Filter::Filter payment: < 5000ms",
-              "id": "bfef8d94f128a49a76e85fde6455a7ff",
-              "passes": 42,
+              "passes": 265,
               "fails": 0,
-              "name": "Filter payment: < 5000ms"
+              "name": "Filter tanggal: < 5000ms",
+              "path": "::5. Transaksi - Get & Filter (per_page=20)::Filter tanggal: < 5000ms",
+              "id": "94490c1f8957b71e810ffd419fa33de9"
+            },
+            {
+              "path": "::5. Transaksi - Get & Filter (per_page=20)::Filter payment: status 200",
+              "id": "ed9f6b8ddb48febb1234f324ffcae4d9",
+              "passes": 244,
+              "fails": 20,
+              "name": "Filter payment: status 200"
+            },
+            {
+              "name": "Filter payment: < 5000ms",
+              "path": "::5. Transaksi - Get & Filter (per_page=20)::Filter payment: < 5000ms",
+              "id": "746ee83caf3a66ffd630d1f60cdca953",
+              "passes": 261,
+              "fails": 3
             }
-          ],
-        "name": "5. Transaksi - Get & Filter"
+          ]
       },
       {
-        "checks": [
-          {
-            "id": "3ef322d2cbc991fad8afe3c5e9711712",
-            "passes": 41,
-            "fails": 0,
-            "name": "QR scan: status 200/404",
-            "path": "::5b. Transaksi - QR Scan & Checkout::QR scan: status 200/404"
-          },
-          {
-            "name": "QR scan: < 5000ms",
-            "path": "::5b. Transaksi - QR Scan & Checkout::QR scan: < 5000ms",
-            "id": "08b90cab8a0a5fbeaa97015246c6c4b4",
-            "passes": 41,
-            "fails": 0
-          },
-          {
-            "name": "Checkout: status 200/201/422",
-            "path": "::5b. Transaksi - QR Scan & Checkout::Checkout: status 200/201/422",
-            "id": "2899157fd734b268082bb7e9bb476207",
-            "passes": 0,
-            "fails": 41
-          },
-          {
-            "name": "Checkout: < 5000ms",
-            "path": "::5b. Transaksi - QR Scan & Checkout::Checkout: < 5000ms",
-            "id": "2a6099c87541c095746cfeaab633ae71",
-            "passes": 41,
-            "fails": 0
-          }
-        ],
-        "name": "5b. Transaksi - QR Scan & Checkout",
-        "path": "::5b. Transaksi - QR Scan & Checkout",
         "id": "2db2f84daeddd0cb6ed8e05969db84e3",
-        "groups": []
-      },
-      {
         "groups": [],
         "checks": [
             {
-              "path": "::6. Profil User::Profil: status 200",
-              "id": "6ab750ae39fdd5224e0e5e077089adb4",
-              "passes": 0,
-              "fails": 41,
-              "name": "Profil: status 200"
+              "name": "QR scan: status 200/404",
+              "path": "::5b. Transaksi - QR Scan & Checkout::QR scan: status 200/404",
+              "id": "3ef322d2cbc991fad8afe3c5e9711712",
+              "passes": 243,
+              "fails": 21
             },
             {
-              "path": "::6. Profil User::Profil: < 3000ms",
-              "id": "8d0764d044c2181fa3b09280ea07c80b",
-              "passes": 41,
-              "fails": 0,
-              "name": "Profil: < 3000ms"
+              "name": "QR scan: < 5000ms",
+              "path": "::5b. Transaksi - QR Scan & Checkout::QR scan: < 5000ms",
+              "id": "08b90cab8a0a5fbeaa97015246c6c4b4",
+              "passes": 264,
+              "fails": 0
+            },
+            {
+              "name": "Checkout: status 200/201/422",
+              "path": "::5b. Transaksi - QR Scan & Checkout::Checkout: status 200/201/422",
+              "id": "2899157fd734b268082bb7e9bb476207",
+              "passes": 0,
+              "fails": 264
+            },
+            {
+              "name": "Checkout: < 5000ms",
+              "path": "::5b. Transaksi - QR Scan & Checkout::Checkout: < 5000ms",
+              "id": "2a6099c87541c095746cfeaab633ae71",
+              "passes": 264,
+              "fails": 0
             }
           ],
+        "name": "5b. Transaksi - QR Scan & Checkout",
+        "path": "::5b. Transaksi - QR Scan & Checkout"
+      },
+      {
         "name": "6. Profil User",
         "path": "::6. Profil User",
-        "id": "1b1480e77076211576911ce4ce28e6e1"
+        "id": "1b1480e77076211576911ce4ce28e6e1",
+        "groups": [],
+        "checks": [
+            {
+              "passes": 0,
+              "fails": 264,
+              "name": "Profil: status 200",
+              "path": "::6. Profil User::Profil: status 200",
+              "id": "6ab750ae39fdd5224e0e5e077089adb4"
+            },
+            {
+              "fails": 0,
+              "name": "Profil: < 3000ms",
+              "path": "::6. Profil User::Profil: < 3000ms",
+              "id": "8d0764d044c2181fa3b09280ea07c80b",
+              "passes": 264
+            }
+          ]
       }
     ],
     "checks": [],
     "name": "",
-    "path": "",
-    "id": "d41d8cd98f00b204e9800998ecf8427e"
+    "path": ""
   },
   "options": {
     "summaryTrendStats": [
@@ -317,30 +367,134 @@
   "state": {
     "isStdOutTTY": true,
     "isStdErrTTY": true,
-    "testRunDurationMs": 630004.3158
+    "testRunDurationMs": 300412.1968
   },
   "metrics": {
-    "http_req_waiting": {
-      "type": "trend",
-      "contains": "time",
+    "checks": {
+      "type": "rate",
+      "contains": "default",
       "values": {
-        "avg": 1173.813834532375,
-        "min": 37.1854,
-        "med": 276.6394,
-        "max": 60000.4604,
-        "p(90)": 1262.6922200000004,
-        "p(95)": 1612.0054199999997
+        "rate": 0.6486082824168364,
+        "passes": 9554,
+        "fails": 5176
+      }
+    },
+    "dur_transaction": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 305.20058025718623,
+        "min": 15.8604,
+        "med": 104.8391,
+        "max": 26931.681,
+        "p(90)": 336.4171700000001,
+        "p(95)": 603.7777500000002
       }
     },
     "dur_inventory": {
+      "type": "trend",
       "contains": "default",
       "values": {
-        "min": 42.2009,
-        "med": 29765.9537,
-        "max": 60007.5372,
-        "p(90)": 60003.30708,
-        "p(95)": 60004.87034,
-        "avg": 28700.632987428562
+        "avg": 969.6462170386903,
+        "min": 15.5949,
+        "med": 234.16555,
+        "max": 60000.7061,
+        "p(90)": 1219.86643,
+        "p(95)": 2214.1561099999985
+      },
+      "thresholds": {
+        "p(95)<8000": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0,
+        "max": 3722.7167,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 2.6411413784067093,
+        "min": 0
+      }
+    },
+    "http_reqs": {
+      "contains": "default",
+      "values": {
+        "count": 7632,
+        "rate": 25.40509367228195
+      },
+      "type": "counter"
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 163414010,
+        "rate": 543965.9632354847
+      }
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0.6319444444444444,
+        "passes": 4823,
+        "fails": 2809
+      },
+      "thresholds": {
+        "rate<0.30": {
+          "ok": false
+        }
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 264.0999,
+        "max": 58169.1047,
+        "p(90)": 1173.6255800000013,
+        "p(95)": 2300.02962,
+        "avg": 1001.4219258454966,
+        "min": 40.6696
+      }
+    },
+    "group_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 78390.0114,
+        "p(90)": 3038.5444,
+        "p(95)": 4658.14449,
+        "avg": 1786.495389567496,
+        "min": 140.3396,
+        "med": 962.2952
+      }
+    },
+    "dur_dashboard": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 224.53394370370364,
+        "min": 17.9839,
+        "med": 125.42235,
+        "max": 2494.2815,
+        "p(90)": 584.22038,
+        "p(95)": 685.8351199999993
+      }
+    },
+    "dur_inventory_page": {
+      "contains": "default",
+      "values": {
+        "min": 16.6921,
+        "med": 638.932,
+        "max": 49149.0447,
+        "p(90)": 3559.2212200000013,
+        "p(95)": 6101.083879999998,
+        "avg": 1998.4310014869893
       },
       "type": "trend"
     },
@@ -348,74 +502,115 @@
       "type": "counter",
       "contains": "data",
       "values": {
-        "count": 5003783,
-        "rate": 7942.4582887912975
+        "rate": 5007.835953483497,
+        "count": 1504415
       }
+    },
+    "http_req_duration": {
+      "contains": "time",
+      "values": {
+        "p(95)": 2054.3562699999998,
+        "avg": 667.5517383385734,
+        "min": 11.9999,
+        "med": 149.18535,
+        "max": 60000.7061,
+        "p(90)": 1228.099260000001
+      },
+      "thresholds": {
+        "p(95)<10000": {
+          "ok": true
+        }
+      },
+      "type": "trend"
     },
     "http_req_tls_handshaking": {
       "type": "trend",
       "contains": "time",
       "values": {
-        "avg": 3.0240040287769783,
+        "avg": 1.634503446016772,
         "min": 0,
         "med": 0,
-        "max": 713.6966,
+        "max": 3399.6554,
         "p(90)": 0,
         "p(95)": 0
       }
     },
-    "checks": {
-      "values": {
-        "fails": 399,
-        "rate": 0.7223382045929019,
-        "passes": 1038
-      },
+    "error_rate": {
       "type": "rate",
-      "contains": "default"
-    },
-    "group_duration": {
+      "contains": "default",
       "values": {
-        "avg": 15515.097763688756,
-        "min": 337.7817,
-        "med": 1403.6823,
-        "max": 120611.0608,
-        "p(90)": 97076.31934000007,
-        "p(95)": 120604.31034
-      },
-      "type": "trend",
-      "contains": "time"
+        "rate": 0.481447295551043,
+        "passes": 2608,
+        "fails": 2809
+      }
     },
-    "iteration_duration": {
+    "dur_opname": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "p(95)": 1385.0165649999994,
+        "avg": 1126.3708063909771,
+        "min": 14.2926,
+        "med": 127.2369,
+        "max": 60000.14,
+        "p(90)": 876.4775000000005
+      }
+    },
+    "http_req_sending": {
       "type": "trend",
       "contains": "time",
       "values": {
-        "avg": 126457.6668731707,
-        "min": 22157.4618,
-        "med": 131152.7496,
-        "max": 186955.7122,
-        "p(90)": 139833.3089,
-        "p(95)": 172805.7052
+        "avg": 0.029451952306079665,
+        "min": 0,
+        "med": 0,
+        "max": 11.3951,
+        "p(90)": 0,
+        "p(95)": 0
       }
     },
-    "data_received": {
-      "contains": "data",
+    "http_req_waiting": {
+      "type": "trend",
+      "contains": "time",
       "values": {
-        "count": 1664024925,
-        "rate": 2641291.310658669
-      },
-      "type": "counter"
+        "p(95)": 1844.3108949999998,
+        "avg": 440.4632303721172,
+        "min": 11.2791,
+        "med": 139.19705,
+        "max": 43821.7078,
+        "p(90)": 1121.4928700000012
+      }
     },
     "dur_login": {
       "type": "trend",
       "contains": "default",
       "values": {
-        "p(90)": 887.57168,
-        "p(95)": 947.2314299999998,
-        "avg": 514.1039744680851,
-        "min": 234.9589,
-        "med": 379.6095,
-        "max": 1940.6351
+        "med": 261.66355,
+        "max": 20356.3492,
+        "p(90)": 1753.04844,
+        "p(95)": 2249.8904199999997,
+        "avg": 610.9698476661953,
+        "min": 11.9999
       }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 1208.6435,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 1.001065788784067,
+        "min": 0,
+        "med": 0
+      }
+    },
+    "total_requests": {
+      "values": {
+        "count": 7632,
+        "rate": 25.40509367228195
+      },
+      "type": "counter",
+      "contains": "default"
     },
     "vus": {
       "type": "gauge",
@@ -423,176 +618,60 @@
       "values": {
         "value": 1,
         "min": 1,
-        "max": 10
+        "max": 50
       }
     },
-    "http_req_connecting": {
-      "type": "trend",
-      "contains": "time",
+    "iteration_duration": {
       "values": {
-        "p(95)": 0,
-        "avg": 7.732105611510791,
-        "min": 0,
-        "med": 0,
-        "max": 3098.0492,
-        "p(90)": 0
-      }
-    },
-    "http_req_sending": {
-      "type": "trend",
-      "contains": "time",
-      "values": {
-        "min": 0,
-        "med": 0,
-        "max": 0.8218,
-        "p(90)": 0,
-        "p(95)": 0,
-        "avg": 0.02332359712230216
-      }
-    },
-    "dur_opname": {
-      "type": "trend",
-      "contains": "default",
-      "values": {
-        "avg": 1172.2295286821704,
-        "min": 37.6668,
-        "med": 266.1426,
-        "max": 55630.5471,
-        "p(90)": 1492.0217400000001,
-        "p(95)": 2157.5754999999986
-      }
-    },
-    "http_req_failed": {
-      "values": {
-        "rate": 0.5582733812949641,
-        "passes": 388,
-        "fails": 307
-      },
-      "thresholds": {
-        "rate<0.10": {
-          "ok": false
-        }
-      },
-      "type": "rate",
-      "contains": "default"
-    },
-    "http_req_receiving": {
-      "values": {
-        "avg": 6488.697117266191,
-        "min": 0,
-        "med": 0.5023,
-        "max": 59101.8773,
-        "p(90)": 46062.2178,
-        "p(95)": 58601.82639
+        "avg": 5617.077556036933,
+        "min": 1328.2068,
+        "med": 2269.5265,
+        "max": 112931.0312,
+        "p(90)": 12520.03581,
+        "p(95)": 15350.238559999987
       },
       "type": "trend",
       "contains": "time"
-    },
-    "dur_transaction": {
-      "type": "trend",
-      "contains": "default",
-      "values": {
-        "avg": 370.9334880382779,
-        "min": 45.2343,
-        "med": 244.7555,
-        "max": 4896.5416,
-        "p(90)": 763.0892400000007,
-        "p(95)": 1014.3173999999999
-      }
-    },
-    "vus_max": {
-      "type": "gauge",
-      "contains": "default",
-      "values": {
-        "value": 10,
-        "min": 10,
-        "max": 10
-      }
-    },
-    "total_requests": {
-      "type": "counter",
-      "contains": "default",
-      "values": {
-        "rate": 1.1031670459550207,
-        "count": 695
-      }
-    },
-    "dur_dashboard": {
-      "contains": "default",
-      "values": {
-        "min": 80.3017,
-        "med": 232.7249,
-        "max": 1346.3719,
-        "p(90)": 624.06832,
-        "p(95)": 726.23399,
-        "avg": 330.30701914893615
-      },
-      "type": "trend"
-    },
-    "http_req_duration{expected_response:true}": {
-      "type": "trend",
-      "contains": "time",
-      "values": {
-        "p(90)": 1408.0887200000004,
-        "p(95)": 2537.4938299999953,
-        "avg": 1360.7970794788266,
-        "min": 47.2181,
-        "med": 353.8655,
-        "max": 55630.5471
-      }
-    },
-    "http_req_blocked": {
-      "type": "trend",
-      "contains": "time",
-      "values": {
-        "p(90)": 0,
-        "p(95)": 0,
-        "avg": 11.067968489208633,
-        "min": 0,
-        "med": 0,
-        "max": 3290.1387
-      }
-    },
-    "http_req_duration": {
-      "type": "trend",
-      "contains": "time",
-      "values": {
-        "avg": 7662.534275395685,
-        "min": 37.6668,
-        "med": 326.9396,
-        "max": 60007.5372,
-        "p(90)": 53170.50796000002,
-        "p(95)": 60001.91986
-      },
-      "thresholds": {
-        "p(95)<3000": {
-          "ok": false
-        }
-      }
     },
     "iterations": {
       "type": "counter",
       "contains": "default",
       "values": {
-        "count": 41,
-        "rate": 0.0650789192577782
+        "count": 1408,
+        "rate": 4.6868935915321
       }
     },
-    "error_rate": {
-      "type": "rate",
+    "dur_health": {
+      "type": "trend",
       "contains": "default",
       "values": {
-        "rate": 0.4942339373970346,
-        "passes": 300,
-        "fails": 307
+        "avg": 175.52899106145264,
+        "min": 34.4174,
+        "med": 68.8104,
+        "max": 3562.7176,
+        "p(90)": 373.59566,
+        "p(95)": 663.9762799999997
       }
     },
-    "http_reqs": {
-      "type": "counter",
+    "http_req_receiving": {
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 59095.395,
+        "p(90)": 46.912000000000006,
+        "p(95)": 192.27251999999987,
+        "avg": 227.059056014151
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "vus_max": {
+      "type": "gauge",
       "contains": "default",
       "values": {
-        "count": 695,
-        "rate": 1.1031670459550207
+        "value": 50,
+        "min": 50,
+        "max": 50
       }
     }
   }

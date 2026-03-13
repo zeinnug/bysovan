@@ -401,7 +401,7 @@ export default {
   updateProduct,
   deleteProduct,
   getProductUnit,
-  getProductByQRCode, // ✅ NEW
+  getProductByQRCode, 
   getStockOpname,
   updatePhysicalStock,
   saveStockOpnameReport,

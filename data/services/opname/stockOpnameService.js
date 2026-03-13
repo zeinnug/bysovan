@@ -1,10 +1,11 @@
 // data/services/opname/stockOpnameService.js
 // Stock Opname Service - Toko Sepatu By Sovan
-// Hanya mengirim produk yang terscan (QR / input manual) ke server
+// Hanya mengirim produk yang terscan ke server
+// Scan model baru: tiap scan QR = +1 unit (jumlahScan), tidak ada preload produk
 
 import apiClient, { formatError, formatResponse } from '../../api';
 import { API_ENDPOINTS, PAGINATION } from '../../constants';
-import { updatePhysicalStock, saveStockOpnameReport } from '../inventoryService';
+import { saveStockOpnameReport } from '../inventoryService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ==================== CACHE KEY ====================
@@ -52,7 +53,6 @@ const saveLaporanToCache = async (laporanBaru) => {
     try {
       await AsyncStorage.setItem(CACHE_KEY_LAPORAN, JSON.stringify(updated));
     } catch (storageErr) {
-      // Fallback: simpan versi ringkas saja jika payload terlalu besar
       console.warn('[stockOpnameService] Cache terlalu besar, simpan ringkasan saja:', storageErr);
       const compact = updated.map((u) => ({
         id: u.id,
@@ -93,135 +93,15 @@ export const hapusLaporanCacheByIndex = async (index) => {
   }
 };
 
-// ==================== LOAD SEMUA PRODUK ====================
-
-export const loadSemuaProduk = async () => {
-  try {
-    const response = await apiClient.get(API_ENDPOINTS.PRODUCTS, {
-      params: {
-        page: PAGINATION.DEFAULT_PAGE,
-        per_page: 9999,
-        no_cache: true,
-      },
-    });
-
-    const result = formatResponse(response);
-
-    if (!result.success || !result.data?.products) {
-      return { success: false, data: [], message: 'Gagal memuat data produk.' };
-    }
-
-    const flatItems = [];
-
-    // Struktur API:
-    // - Stok & ukuran ada di level PRODUK (p.stock, p.size)
-    // - Units hanya berisi daftar QR code: { unit_code, qr_code, is_active }
-    // → Tiap unit = 1 item scan, stok & ukuran diambil dari produk induknya
-
-    for (const product of result.data.products) {
-      const stokSistem = parseInt(product.stock) || 0;
-      const namaProduk = product.name ?? product.model ?? '-';
-      const merek      = product.brand ?? '-';
-      const ukuran     = product.size ?? '-';
-      const warna      = product.color ?? '-';
-      const harga      = parseFloat(product.selling_price) || 0;
-
-      if (Array.isArray(product.units) && product.units.length > 0) {
-        for (const unit of product.units) {
-          // skip unit nonaktif jika field is_active ada
-          if (unit.is_active === false) continue;
-          flatItems.push({
-            id:         product.id,
-            unitCode:   unit.unit_code ?? `${product.id}-unknown`,
-            qrCode:     unit.qr_code ?? unit.unit_code,
-            namaProduk,
-            merek,
-            ukuran,
-            warna,
-            stokSistem,
-            harga,
-            statusScan: 'belum',
-            stokFisik:  null,
-          });
-        }
-      } else {
-        // Produk tanpa units → gunakan product.id sebagai unitCode
-        flatItems.push({
-          id:         product.id,
-          unitCode:   String(product.id),
-          qrCode:     null,
-          namaProduk,
-          merek,
-          ukuran,
-          warna,
-          stokSistem,
-          harga,
-          statusScan: 'belum',
-          stokFisik:  null,
-        });
-      }
-    }
-
-    return { success: true, data: flatItems, total: flatItems.length };
-  } catch (error) {
-    console.error('[stockOpnameService] loadSemuaProduk error:', error);
-    return { success: false, data: [], message: formatError(error).message };
-  }
-};
-
-// ==================== QR SCAN ====================
-
-export const cocokkanQRDenganDaftar = (rawQR, daftarProduk) => {
-  if (!rawQR || rawQR.trim() === '') {
-    return { success: false, message: 'Kode QR tidak valid.' };
-  }
-
-  const { productId, unitCode } = parseQRCode(rawQR);
-  const kode = unitCode || rawQR.trim();
-
-  // 1. Prioritas: cocokkan berdasarkan unitCode (paling akurat)
-  let found = daftarProduk.find((p) => p.unitCode === kode);
-
-  // 2. Fallback: cocokkan berdasarkan productId, prioritaskan yang belum discan
-  if (!found && productId) {
-    found =
-      daftarProduk.find(
-        (p) => String(p.id) === String(productId) && p.statusScan === 'belum'
-      ) ||
-      daftarProduk.find(
-        (p) => String(p.id) === String(productId)
-      );
-  }
-
-  if (!found) {
-    return {
-      success: false,
-      unitCode: kode,
-      message: `Produk dengan kode "${kode}" tidak ditemukan.`,
-    };
-  }
-
-  if (found.statusScan === 'terscan') {
-    return {
-      success: false,
-      unitCode: kode,
-      sudahScan: true,
-      item: found,
-      message: `"${found.namaProduk}" (${found.ukuran}) sudah dipindai sebelumnya.`,
-    };
-  }
-
-  return { success: true, unitCode: kode, item: found };
-};
-
-// ==================== FALLBACK: FETCH DARI API ====================
+// ==================== FETCH PRODUK DARI API (SAAT SCAN) ====================
+// Dipanggil setiap kali QR discan — tidak ada preload daftar produk
 
 export const getProdukByQRDariAPI = async (rawQR) => {
   try {
     const { productId, unitCode } = parseQRCode(rawQR);
     const kode = unitCode || rawQR.trim();
 
-    console.log(`[stockOpnameService] Fallback API → productId: ${productId}, unitCode: ${kode}`);
+    console.log(`[stockOpnameService] Scan QR → productId: ${productId}, unitCode: ${kode}`);
 
     let response;
     if (productId) {
@@ -235,24 +115,21 @@ export const getProdukByQRDariAPI = async (rawQR) => {
       return { success: false, message: 'Produk tidak ditemukan di database.' };
     }
 
-    const raw = result.data;
+    const raw     = result.data;
     const product = raw.product ?? raw;
-    const unit = raw.unit ?? raw;
+    const unit    = raw.unit ?? raw;
 
     return {
       success: true,
       data: {
-        id: product.id ?? raw.product_id ?? productId,
-        unitCode: unit.unit_code ?? raw.unit_code ?? kode,
+        id:         product.id ?? raw.product_id ?? productId,
+        unitCode:   unit.unit_code ?? raw.unit_code ?? kode,
         namaProduk: product.name ?? product.model ?? raw.name ?? '-',
-        merek: product.brand ?? raw.brand ?? '-',
-        ukuran: unit.size ?? product.size ?? raw.size ?? '-',
-        warna: product.color ?? raw.color ?? '-',
+        merek:      product.brand ?? raw.brand ?? '-',
+        ukuran:     unit.size ?? product.size ?? raw.size ?? '-',
+        warna:      product.color ?? raw.color ?? '-',
         stokSistem: parseInt(unit.stock ?? product.stock ?? raw.stock) || 0,
-        harga: parseFloat(product.selling_price ?? raw.selling_price) || 0,
-        statusScan: 'belum',
-        stokFisik: null,
-        dariAPI: true,
+        harga:      parseFloat(product.selling_price ?? raw.selling_price) || 0,
       },
     };
   } catch (error) {
@@ -262,102 +139,89 @@ export const getProdukByQRDariAPI = async (rawQR) => {
 };
 
 // ==================== SIMPAN LAPORAN ====================
+// daftarScan: array of { id, unitCode, namaProduk, merek, ukuran, warna, stokSistem, harga, jumlahScan }
+// Hanya produk terscan yang masuk — tidak ada konsep "belum scan"
 
-export const simpanLaporanOpname = async (semuaProduk) => {
+export const simpanLaporanOpname = async (daftarScan) => {
   try {
-    // ── 1. PISAHKAN terscan vs belum
-    const terscanArr = semuaProduk.filter((i) => i.statusScan === 'terscan');
-    const belumArr   = semuaProduk.filter((i) => i.statusScan === 'belum');
-    const sesuaiArr  = terscanArr.filter((i) => i.stokFisik === i.stokSistem);
-    const selisihArr = terscanArr.filter((i) => i.stokFisik !== i.stokSistem);
+    if (!Array.isArray(daftarScan) || daftarScan.length === 0) {
+      return { success: false, message: 'Tidak ada produk yang discan.' };
+    }
 
-    // ── 2. RINGKASAN
+    // ── 1. HITUNG RINGKASAN
+    const totalJenis   = daftarScan.length;
+    const totalUnit    = daftarScan.reduce((acc, i) => acc + i.jumlahScan, 0);
+    const sesuaiArr    = daftarScan.filter((i) => i.jumlahScan === i.stokSistem);
+    const selisihArr   = daftarScan.filter((i) => i.jumlahScan !== i.stokSistem);
+
     const ringkasan = {
-      total:          semuaProduk.length,
-      totalTerscan:   terscanArr.length,
-      totalBelumScan: belumArr.length,
-      totalSesuai:    sesuaiArr.length,
-      totalSelisih:   selisihArr.length,
+      totalJenis,
+      totalUnit,
+      totalSesuai:  sesuaiArr.length,
+      totalSelisih: selisihArr.length,
     };
 
-    // ── 3. BUILD REPORTS
-    const reports = terscanArr.map((item) => ({
+    // ── 2. BUILD REPORTS (format kompatibel dengan server)
+    //    physical_stock = jumlahScan, system_stock = stokSistem, difference = delta
+    const reports = daftarScan.map((item) => ({
       product_id:     item.id,
-      unit_code:      item.unitCode,
+      group_key:      item.groupKey,
       name:           item.namaProduk,
       size:           item.ukuran,
       color:          item.warna,
       system_stock:   item.stokSistem,
-      physical_stock: item.stokFisik ?? 0,
-      difference:     (item.stokFisik ?? 0) - item.stokSistem,
+      physical_stock: item.jumlahScan,
+      difference:     item.jumlahScan - item.stokSistem,
+      scanned_units:  item.scannedUnitCodes?.length ?? item.jumlahScan,
     }));
 
-    console.log('[stockOpnameService] Reports yang akan dikirim:', reports.length, 'item (hanya terscan)');
+    console.log('[stockOpnameService] Reports dikirim:', reports.length, 'item');
 
-    // ── 4. OBJEK CACHE
+    // ── 3. OBJEK CACHE
     const laporanCache = {
       id:      `opname_${Date.now()}`,
       tanggal: new Date().toISOString(),
       ringkasan,
       reports,
       detailSelisih: selisihArr.map((i) => ({
-        unitCode:   i.unitCode,
+        groupKey:   i.groupKey,
         namaProduk: i.namaProduk,
         ukuran:     i.ukuran,
         warna:      i.warna,
         stokSistem: i.stokSistem,
-        stokFisik:  i.stokFisik,
-        delta:      (i.stokFisik ?? 0) - i.stokSistem,
-      })),
-      detailBelumScan: belumArr.map((i) => ({
-        unitCode:   i.unitCode,
-        namaProduk: i.namaProduk,
-        ukuran:     i.ukuran,
-        warna:      i.warna,
-        stokSistem: i.stokSistem,
+        jumlahScan: i.jumlahScan,
+        delta:      i.jumlahScan - i.stokSistem,
       })),
       disimpanServer: false,
     };
 
-    // ── 5. KIRIM KE SERVER (selaras dengan flow web: update stok fisik + simpan laporan)
+    // ── 4. KIRIM KE SERVER
     let serverSuccess = false;
     let serverMessage = '';
 
-    if (terscanArr.length === 0) {
-      serverMessage = 'Tidak ada produk yang discan — laporan disimpan di perangkat.';
-      console.warn('[stockOpnameService] Tidak ada item terscan, skip kirim server.');
-    } else {
-      try {
-        // NOTE: updatePhysicalStock per item sudah tidak diperlukan — 
-        // backend /products/{id}/update-physical-stock hanya support GET.
-        // Semua update stok fisik dilakukan melalui batch endpoint stock opname.
+    try {
+      const result = await saveStockOpnameReport(reports);
 
-        // Simpan laporan opname — akan mencoba banyak endpoint
-        const result = await saveStockOpnameReport(reports);
-
-        if (result.serverEndpointMissing) {
-          // Backend belum punya write endpoint untuk stock opname
-          serverSuccess = false;
-          serverMessage = 'Server belum mendukung penyimpanan stock opname.';
-          console.warn('[stockOpnameService] Server endpoint tidak tersedia.');
-        } else {
-          serverSuccess = !!result.success;
-          serverMessage = result.message || 'Laporan berhasil disimpan ke server.';
-          if (serverSuccess) {
-            laporanCache.disimpanServer = true;
-          }
+      if (result.serverEndpointMissing) {
+        serverSuccess = false;
+        serverMessage = 'Server belum mendukung penyimpanan stock opname.';
+        console.warn('[stockOpnameService] Server endpoint tidak tersedia.');
+      } else {
+        serverSuccess = !!result.success;
+        serverMessage = result.message || 'Laporan berhasil disimpan ke server.';
+        if (serverSuccess) {
+          laporanCache.disimpanServer = true;
         }
-
-        console.log('[stockOpnameService] Hasil simpan:', serverMessage);
-      } catch (serverErr) {
-        // err bisa formatted object atau Error
-        const errMsg = serverErr?.message || (typeof serverErr === 'object' ? JSON.stringify(serverErr) : String(serverErr));
-        serverMessage = errMsg || 'Tidak dapat terhubung ke server.';
-        console.warn('[stockOpnameService] Gagal kirim ke server:', serverMessage);
       }
+
+      console.log('[stockOpnameService] Hasil simpan:', serverMessage);
+    } catch (serverErr) {
+      const errMsg = serverErr?.message || String(serverErr);
+      serverMessage = errMsg || 'Tidak dapat terhubung ke server.';
+      console.warn('[stockOpnameService] Gagal kirim ke server:', serverMessage);
     }
 
-    // ── 6. SIMPAN CACHE LOKAL (selalu simpan, terlepas dari server)
+    // ── 5. SIMPAN CACHE LOKAL (selalu simpan)
     const cacheSaved = await saveLaporanToCache(laporanCache);
 
     if (!cacheSaved && !serverSuccess) {
@@ -368,9 +232,9 @@ export const simpanLaporanOpname = async (semuaProduk) => {
     }
 
     return {
-      success:       true,
+      success: true,
       serverSuccess,
-      message:       serverSuccess
+      message: serverSuccess
         ? serverMessage
         : `Laporan tersimpan di perangkat.${serverMessage ? ' (' + serverMessage + ')' : ''}`,
       ringkasan,
@@ -388,7 +252,7 @@ export const getLaporanOpname = async () => {
   const cacheData = await getLaporanDariCache();
   return {
     success: true,
-    sumber:  'cache',
+    sumber: 'cache',
     data: {
       reports:    cacheData,
       totalStock: 0,
@@ -421,62 +285,46 @@ export const hapusLaporanByIndex = async (index) => {
 // ==================== DEBUG: TEST ENDPOINT ====================
 
 export const testEndpoint = async () => {
-  // Langkah 1: GET /products/stock-opname untuk melihat format data backend
   console.log('=== MULAI TEST ENDPOINT ===');
-  
+
   try {
-    console.log('[TEST] GET /products/stock-opname - melihat format respons...');
+    console.log('[TEST] GET /products/stock-opname...');
     const getRes = await apiClient.get('/products/stock-opname');
     console.log('[TEST] ✅ GET /products/stock-opname → Status:', getRes.status);
-    console.log('[TEST] Response keys:', Object.keys(getRes.data || {}));
-    console.log('[TEST] Response data:', JSON.stringify(getRes.data).substring(0, 500));
+    console.log('[TEST] Response:', JSON.stringify(getRes.data).substring(0, 500));
   } catch (e) {
     const status = e.response?.status ?? 'NO_RESPONSE';
     console.log(`[TEST] ❌ GET /products/stock-opname → ${status}: ${e.response?.data?.message ?? e.message}`);
   }
 
-  // Langkah 2: Test PUT /products/stock-opname dengan berbagai format payload
   const payload = {
-    product_id: 2136,
-    unit_code: 'UNIT-2MDSIDJZ',
-    name: 'TEST',
-    size: '-',
-    color: '-',
-    system_stock: 9,
-    physical_stock: 9,
-    difference: 0,
+    product_id: 2136, unit_code: 'UNIT-2MDSIDJZ',
+    name: 'TEST', size: '-', color: '-',
+    system_stock: 9, physical_stock: 9, difference: 0,
   };
 
   const formats = [
+    { label: 'reports[...]',       data: { reports: [payload] } },
     { label: 'products[{id,...}]', data: { products: [{ id: payload.product_id, ...payload }] } },
-    { label: 'reports[...]', data: { reports: [payload] } },
-    { label: 'data[...]', data: { data: [{ id: payload.product_id, physical_stock: 9 }] } },
-    { label: 'items[...]', data: { items: [{ id: payload.product_id, physical_stock: 9 }] } },
-    { label: 'stock_opname[...]', data: { stock_opname: [{ product_id: payload.product_id, physical_stock: 9 }] } },
+    { label: 'data[...]',          data: { data: [{ id: payload.product_id, physical_stock: 9 }] } },
   ];
 
   for (const fmt of formats) {
     try {
-      console.log(`[TEST] PUT /products/stock-opname [${fmt.label}]`);
       const res = await apiClient.put('/products/stock-opname', fmt.data);
-      console.log(`[TEST] ✅ Format "${fmt.label}" → Status: ${res.status}`);
-      if (res.data) console.log('       Response:', JSON.stringify(res.data).substring(0, 300));
+      console.log(`[TEST] ✅ [${fmt.label}] → Status: ${res.status}`);
     } catch (e) {
       const status = e.response?.status ?? 'NO_RESPONSE';
-      const msg = e.response?.data?.message ?? e.message;
-      const errors = e.response?.data?.errors ? JSON.stringify(e.response.data.errors) : '';
-      console.log(`[TEST] ❌ [${fmt.label}] → ${status}: ${msg} ${errors}`);
+      console.log(`[TEST] ❌ [${fmt.label}] → ${status}: ${e.response?.data?.message ?? e.message}`);
     }
   }
-  
+
   console.log('=== SELESAI TEST ENDPOINT ===');
 };
 
 // ==================== DEFAULT EXPORT ====================
 
 const stockOpnameService = {
-  loadSemuaProduk,
-  cocokkanQRDenganDaftar,
   getProdukByQRDariAPI,
   simpanLaporanOpname,
   getLaporanOpname,
@@ -485,7 +333,7 @@ const stockOpnameService = {
   getLaporanDariCache,
   hapusSemuaLaporanDariCache,
   hapusLaporanCacheByIndex,
-  testEndpoint, // <--- Ditambahkan ke sini
+  testEndpoint,
 };
 
 export default stockOpnameService;
