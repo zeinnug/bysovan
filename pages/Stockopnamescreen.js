@@ -41,26 +41,20 @@ export default function StockOpnameScreen() {
 
   const [mode, setMode] = useState('idle');
 
-  // Daftar produk yang sudah discan (akumulasi, digroup per namaProduk+ukuran+warna)
-  // Shape: { groupKey, id, scannedUnitCodes[], namaProduk, merek, ukuran, warna, stokSistem, harga, jumlahScan }
   const [daftarScan, setDaftarScan] = useState([]);
 
-  // State scan
   const [isScanning, setIsScanning] = useState(false);
   const [loadingItem, setLoadingItem] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [lastScanItem, setLastScanItem] = useState(null); // feedback scan terakhir
+  const [lastScanItem, setLastScanItem] = useState(null);
 
-  // Simpan laporan
   const [savingLaporan, setSavingLaporan] = useState(false);
   const [laporanRingkasan, setLaporanRingkasan] = useState(null);
 
-  // Modal edit jumlah manual
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [inputJumlah, setInputJumlah] = useState('');
 
-  // Animasi scan line
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (mode === 'scanning') {
@@ -75,11 +69,9 @@ export default function StockOpnameScreen() {
     }
   }, [mode]);
 
-  // ── Total item terscan (jumlah jenis produk unik) ────────────────────────────
   const totalJenisScan = daftarScan.length;
   const totalUnitScan  = daftarScan.reduce((acc, p) => acc + p.jumlahScan, 0);
 
-  // ── STEP 1: Mulai scan (minta izin kamera) ───────────────────────────────────
   const handleMulaiOpname = async () => {
     if (!permission?.granted) {
       const result = await requestPermission();
@@ -95,11 +87,9 @@ export default function StockOpnameScreen() {
     setMode('scanning');
   };
 
-  // ── Helper: buat groupKey dari atribut produk ────────────────────────────────
   const makeGroupKey = (namaProduk, ukuran, warna) =>
     `${(namaProduk ?? '').trim().toLowerCase()}|${(ukuran ?? '').trim().toLowerCase()}|${(warna ?? '').trim().toLowerCase()}`;
 
-  // ── STEP 2: Handle QR dipindai ───────────────────────────────────────────────
   const handleBarcodeScanned = async ({ data: rawQR }) => {
     if (isScanning || loadingItem) return;
     setIsScanning(true);
@@ -123,10 +113,7 @@ export default function StockOpnameScreen() {
       const existingIndex = prev.findIndex((p) => p.groupKey === groupKey);
 
       if (existingIndex !== -1) {
-        // Grup sudah ada
         const existing = prev[existingIndex];
-
-        // Cek apakah unit QR ini sudah pernah discan sebelumnya
         const unitSudahScan = existing.scannedUnitCodes.includes(unitCode);
 
         const updated = [...prev];
@@ -138,7 +125,6 @@ export default function StockOpnameScreen() {
             : [...existing.scannedUnitCodes, unitCode],
         };
 
-        // Feedback
         setLastScanItem({
           ...updated[existingIndex],
           tambah:       !unitSudahScan,
@@ -147,7 +133,6 @@ export default function StockOpnameScreen() {
 
         return updated;
       } else {
-        // Grup baru
         const itemBaru = {
           groupKey,
           id:               produk.id,
@@ -166,14 +151,12 @@ export default function StockOpnameScreen() {
       }
     });
 
-    // Auto-reset isScanning setelah feedback singkat
     setTimeout(() => {
       setLastScanItem(null);
       setIsScanning(false);
     }, 1500);
   };
 
-  // ── Edit jumlah dari tabel review ────────────────────────────────────────────
   const handleEditJumlah = (item) => {
     setSelectedItem(item);
     setInputJumlah(String(item.jumlahScan));
@@ -223,7 +206,6 @@ export default function StockOpnameScreen() {
     setSelectedItem(null);
   };
 
-  // ── Selesai scan → review ────────────────────────────────────────────────────
   const handleSelesaiScan = () => {
     if (daftarScan.length === 0) {
       Alert.alert('Belum Ada Scan', 'Scan minimal 1 produk terlebih dahulu.');
@@ -232,7 +214,6 @@ export default function StockOpnameScreen() {
     setMode('review');
   };
 
-  // ── Simpan laporan ke server ─────────────────────────────────────────────────
   const handleSimpanLaporan = () => {
     Alert.alert(
       'Simpan Laporan?',
@@ -259,7 +240,6 @@ export default function StockOpnameScreen() {
     );
   };
 
-  // ── Reset ────────────────────────────────────────────────────────────────────
   const handleReset = () => {
     Alert.alert('Mulai Ulang', 'Semua data scan akan dihapus. Yakin?', [
       { text: 'Batal', style: 'cancel' },
@@ -282,10 +262,8 @@ export default function StockOpnameScreen() {
     navigation.navigate('MainApp', { screen: 'Inventory' });
   };
 
-  // ─── Stepper index ───────────────────────────────────────────────────────────
   const stepIndex = { idle: -1, scanning: 0, review: 1, laporan: 2 }[mode] ?? 0;
 
-  // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.safeArea}>
       <StatusBar backgroundColor={C.jet} barStyle="light-content" />
@@ -350,7 +328,9 @@ export default function StockOpnameScreen() {
 
       {/* ── KONTEN UTAMA ── */}
       {mode === 'idle' && (
-        <IdleView onMulaiOpname={handleMulaiOpname} onKembali={handleKembaliInventory} />
+        <View style={{ flex: 1 }}>
+          <IdleView onMulaiOpname={handleMulaiOpname} onKembali={handleKembaliInventory} />
+        </View>
       )}
 
       {mode === 'scanning' && (
@@ -422,7 +402,6 @@ export default function StockOpnameScreen() {
                   </View>
                 </View>
 
-                {/* Preview selisih real-time */}
                 {inputJumlah !== '' && !isNaN(parseInt(inputJumlah)) && (() => {
                   const fisik = parseInt(inputJumlah);
                   const delta = fisik - selectedItem.stokSistem;
@@ -460,7 +439,10 @@ export default function StockOpnameScreen() {
 // ─────────────────────────────────────────────────────────────────────────────
 function IdleView({ onMulaiOpname, onKembali }) {
   return (
-    <ScrollView contentContainerStyle={s.idleContainer}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={s.idleContainer}
+    >
       <View style={s.idleIconWrap}>
         <Octicons name="package" size={44} color={C.white} />
       </View>
@@ -516,7 +498,6 @@ function ScanningView({
 
   return (
     <View style={{ flex: 1, backgroundColor: C.jet }}>
-      {/* Kamera */}
       <View style={s.cameraContainer}>
         <CameraView
           style={StyleSheet.absoluteFill}
@@ -525,7 +506,6 @@ function ScanningView({
           onBarcodeScanned={onBarcodeScanned}
         />
 
-        {/* Frame scan */}
         <View style={s.scanOverlay}>
           <View style={s.scanFrame}>
             <View style={[s.corner, s.cornerTL]} />
@@ -545,7 +525,6 @@ function ScanningView({
         )}
       </View>
 
-      {/* Error banner */}
       {!!errorMsg && (
         <View style={s.errorBanner}>
           <Octicons name="alert" size={14} color={C.white} />
@@ -553,7 +532,6 @@ function ScanningView({
         </View>
       )}
 
-      {/* Feedback scan berhasil */}
       {!errorMsg && lastScanItem && (
         <View style={lastScanItem.unitSudahScan ? s.warnBanner : s.successBanner}>
           <Octicons
@@ -571,7 +549,6 @@ function ScanningView({
         </View>
       )}
 
-      {/* Bottom info bar */}
       <View style={s.scanBottomBar}>
         <View>
           <Text style={s.scanCountText}>{totalJenisScan} jenis · {totalUnitScan} unit</Text>
@@ -619,7 +596,6 @@ function ReviewView({
 
   return (
     <View style={{ flex: 1, backgroundColor: C.linen }}>
-      {/* Summary chips */}
       <View style={s.chips}>
         <ChipItem label="Jenis"   value={totalJenisScan} color={C.jet} />
         <ChipItem label="Unit"    value={totalUnitScan}  color={C.pumpkin} />
@@ -627,7 +603,6 @@ function ReviewView({
         <ChipItem label="Selisih" value={totalSelisih}   color={C.goldenGate} />
       </View>
 
-      {/* Filter tabs */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -647,7 +622,6 @@ function ReviewView({
         ))}
       </ScrollView>
 
-      {/* Tabel header */}
       <View style={s.tblHeader}>
         <Text style={[s.tblHead, { flex: 0.4 }]}>Status</Text>
         <Text style={[s.tblHead, { flex: 2.2 }]}>Produk</Text>
@@ -670,7 +644,6 @@ function ReviewView({
               onPress={() => onEditJumlah(item)}
               activeOpacity={0.7}
             >
-              {/* Status dot */}
               <View style={{ flex: 0.4, alignItems: 'center' }}>
                 <View style={[
                   s.statusDot,
@@ -706,7 +679,6 @@ function ReviewView({
         }
       />
 
-      {/* Action Buttons */}
       <View style={s.tblActions}>
         <TouchableOpacity style={s.btnOutline} onPress={onLanjutScan}>
           <Octicons name="arrow-left" size={14} color={C.pumpkin} />
@@ -741,7 +713,6 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
       style={{ flex: 1, backgroundColor: C.linen }}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
     >
-      {/* Header */}
       <View style={s.laporanHeader}>
         <View style={s.laporanSavedBadge}>
           <Octicons name="check-circle-fill" size={13} color={C.white} />
@@ -755,7 +726,6 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
         </Text>
       </View>
 
-      {/* Ringkasan */}
       {ringkasan && (
         <View style={s.laporanRingkasan}>
           <RingkasanBox label="Jenis Scan"  value={ringkasan.totalJenis}   color={C.jet} />
@@ -765,7 +735,6 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
         </View>
       )}
 
-      {/* Selisih stok */}
       {selisihItems.length > 0 && (
         <View style={s.detailCard}>
           <View style={s.detailCardHeader}>
@@ -799,7 +768,6 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
         </View>
       )}
 
-      {/* Semua sesuai */}
       {selisihItems.length === 0 && (
         <View style={s.allOkBox}>
           <Octicons name="check-circle-fill" size={36} color={C.successGreen} />
@@ -897,8 +865,12 @@ const s = StyleSheet.create({
 
   // Idle
   idleContainer: {
-    backgroundColor: C.linen, alignItems: 'center',
-    paddingHorizontal: 24, paddingVertical: 32,
+    flexGrow: 1,                  // ← mengisi sisa layar, tidak ada gap kosong
+    backgroundColor: C.linen,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    justifyContent: 'center',    // ← konten terpusat vertikal
   },
   idleIconWrap: {
     width: 90, height: 90, borderRadius: 24, backgroundColor: C.pumpkin,
