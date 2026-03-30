@@ -543,7 +543,7 @@ export default function SalesReportScreen({ navigation, userData }) {
     try {
       const stored = await getReceiptByInvoice(transaction.invoice_number);
       if (stored) { setSelectedReceipt(stored); setShowStruk(true); return; }
-          const receiptData = buildReceiptData(
+          const receiptData = await buildReceiptData(
         { data: transaction },
         (transaction.items || []).map((item) => ({
           name:      item.product_name || item.name,

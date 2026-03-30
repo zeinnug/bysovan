@@ -267,7 +267,7 @@ export const useTransactionLogic = (navigation) => {
         console.log('✅ Transaction successful:', result.data);
 
         // ── Build & simpan struk ───────────────────────────────────────────
-        const receiptData = buildReceiptData(
+        const receiptData = await buildReceiptData(
           result,
           cartSnapshot,
           customerSnapshot,

@@ -352,7 +352,7 @@ export default function TransactionScreen({ navigation }) {
         setLoadingReceipt(false);
         return;
       }
-      const receiptData = buildReceiptData(
+      const receiptData = await buildReceiptData(
         { data: transaction },
         (transaction.items || []).map((item) => ({
           name: item.product_name || item.name,

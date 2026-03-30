@@ -31,7 +31,33 @@ export const formatRupiah = (amount) => {
   }
 };
 
-// ─── STORAGE ─────────────────────────────────────────────────────────────────
+const getDatePrefix = (dateInput) => {
+  const d = new Date(dateInput || Date.now());
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+};
+
+const formatInvoiceNumber = (datePrefix, seq) => `${datePrefix}-${String(seq).padStart(3, '0')}`;
+
+const getNextInvoiceSequence = async (datePrefix) => {
+  const receipts = await getAllReceipts();
+  const sequences = receipts
+    .map((r) => String(r.invoice_number || ''))
+    .map((invoiceNumber) => {
+      const [prefix, suffix] = invoiceNumber.split('-');
+      if (prefix === datePrefix && /^[0-9]{3}$/.test(suffix)) {
+        return parseInt(suffix, 10);
+      }
+      return null;
+    })
+    .filter((value) => Number.isFinite(value));
+
+  const maxSequence = sequences.length ? Math.max(...sequences) : 0;
+  return maxSequence + 1;
+};
+
 export const saveReceiptToStorage = async (receiptData) => {
   try {
     const existing = await AsyncStorage.getItem(RECEIPTS_STORAGE_KEY);
@@ -60,17 +86,19 @@ export const getReceiptByInvoice = async (invoiceNumber) => {
 };
 
 // ─── BUILD RECEIPT DATA ───────────────────────────────────────────────────────
-export const buildReceiptData = (
+export const buildReceiptData = async (
   transactionResponse, cartItems, customerData, calculatedTotal, discountAmount
 ) => {
   const now = new Date();
   const txData = transactionResponse?.data?.transaction || transactionResponse?.data || {};
+  const datePrefix = getDatePrefix(txData.created_at || now);
+  const invoiceNumber = txData.invoice_number || await formatInvoiceNumber(datePrefix, await getNextInvoiceSequence(datePrefix));
 
   return {
     store_name: 'Sepatu by Sovan',
     store_address: 'Jln Niti Semito No 43 Purwosari Kudus',
     store_phone: '08815671005',
-    invoice_number: txData.invoice_number || `INV-${Date.now()}`,
+    invoice_number: invoiceNumber,
     date: txData.created_at || now.toISOString(),
     cashier: txData.cashier_name || 'Kasir',
     customer_name: customerData?.customer_name || txData.customer_name || '-',
