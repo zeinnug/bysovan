@@ -19,7 +19,7 @@ const COLORS = {
   white: '#FFFFFF', success: '#10B981', successDim: '#10B98115',
   cardBg: '#FFFFFF', border: '#F0E8E0',
   // Filter panel (dark theme seperti gambar)
-  filterBg: '#1A1A1A', filterCard: '#2A3347', filterBorder: '#374151',
+  filterBg: '#292929', filterCard: '#2A3347', filterBorder: '#374151',
   filterText: '#FC6A0A', filterMuted: '#ffffff',
 };
 

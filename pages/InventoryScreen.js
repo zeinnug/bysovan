@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 20, fontWeight: 'bold', color: '#292929', textAlign: 'center' },
 
   // INFO SECTION
-  infoSection: { backgroundColor: '#1e293b', padding: 15 },
+  infoSection: { backgroundColor: '#292929', padding: 15 },
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#FFFFFF', textAlign: 'center', marginBottom: 15, letterSpacing: 0.5, textTransform: 'uppercase' },
   infoCardsContainer: { flexDirection: 'row', gap: 8 },
   infoCard: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 8, padding: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 1.41, justifyContent: 'flex-start' },
