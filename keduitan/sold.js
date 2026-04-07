@@ -8,6 +8,29 @@ import {
   saveReceiptToStorage,
 } from './Struk';
 
+// ── RUPIAH FORMAT HELPERS ────────────────────────────────────────────────────
+
+/**
+ * Parse string berformat "1.275.000" → angka 1275000
+ */
+export const parseRupiahInput = (str) => {
+  if (!str) return 0;
+  const cleaned = String(str).replace(/\./g, '').replace(/\D/g, '');
+  return parseFloat(cleaned) || 0;
+};
+
+/**
+ * Format raw text input menjadi string dengan titik ribuan
+ * Dipanggil di onChangeText — strip non-digit lalu format
+ */
+export const formatRupiahOnChange = (rawText) => {
+  const digits = String(rawText).replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+// ── REDUCER ──────────────────────────────────────────────────────────────────
+
 const customerReducer = (state, action) => {
   if (action.type === 'UPDATE_FIELD') {
     return { ...state, [action.field]: action.value };
@@ -24,6 +47,8 @@ const customerReducer = (state, action) => {
   return state;
 };
 
+// ── HOOK ─────────────────────────────────────────────────────────────────────
+
 export const useTransactionLogic = (navigation) => {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -33,7 +58,12 @@ export const useTransactionLogic = (navigation) => {
   const [showScanner, setShowScanner] = useState(false);
   const [isProductsLoaded, setIsProductsLoaded] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Disimpan sebagai string berformat "1.275.000"
   const [newPrice, setNewPrice] = useState('');
+  // { [productId]: "500.000" } — string berformat per item
+  const [itemNewPrices, setItemNewPrices] = useState({});
+
   const [customerData, dispatchCustomer] = useReducer(customerReducer, {
     customer_name: '',
     customer_phone: '',
@@ -42,13 +72,11 @@ export const useTransactionLogic = (navigation) => {
     notes: '',
   });
 
-  // ── STRUK STATE ──────────────────────────────────────────────────────────
   const [showStruk, setShowStruk] = useState(false);
   const [currentReceiptData, setCurrentReceiptData] = useState(null);
 
   const itemsPerPage = 5;
 
-  // Filter products
   useEffect(() => {
     const filtered = !searchQuery.trim()
       ? products
@@ -61,7 +89,6 @@ export const useTransactionLogic = (navigation) => {
     setCurrentPage(1);
   }, [searchQuery, products]);
 
-  // Helper: unit_code valid
   const getValidUnitCode = (product) => {
     if (product.unit_code?.trim()) return product.unit_code.trim().toUpperCase();
     if (product.code?.trim()) return product.code.trim().toUpperCase();
@@ -72,11 +99,9 @@ export const useTransactionLogic = (navigation) => {
       const uc = u.unitCode || u.unit_code || u.code;
       if (uc) return uc.trim().toUpperCase();
     }
-    console.warn(`⚠️ Product ${product.id} has no valid unit_code, generating fallback`);
     return `BYS${product.id}${Date.now().toString().slice(-6)}`.toUpperCase();
   };
 
-  // Load products
   const loadProducts = async () => {
     try {
       setLoading(true);
@@ -91,12 +116,15 @@ export const useTransactionLogic = (navigation) => {
             name: p.name || p.model || '',
             code: unitCode,
             unit_code: unitCode,
+            selling_price: parseFloat(p.selling_price || p.sellingPrice || p.price || 0),
             price: parseFloat(p.selling_price || p.sellingPrice || p.price || 0),
+            discount_price: (p.discount_price || p.discountPrice)
+              ? parseFloat(p.discount_price || p.discountPrice)
+              : null,
             color: p.color || '',
             size: p.size || '',
             production_code: p.production_code || p.code || '',
             stock: parseInt(p.stock) || 0,
-            discount_price: p.discount_price || p.discountPrice || null,
             barcode: p.barcode || unitCode,
             qr_code: unitCode,
             units: p.units || [],
@@ -121,7 +149,6 @@ export const useTransactionLogic = (navigation) => {
 
   useEffect(() => { loadProducts(); }, []);
 
-  // Pagination
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
@@ -129,7 +156,8 @@ export const useTransactionLogic = (navigation) => {
   const handlePrevious = () => currentPage > 1 && setCurrentPage(currentPage - 1);
   const handleNext = () => currentPage < totalPages && setCurrentPage(currentPage + 1);
 
-  // Cart operations
+  // ── CART OPERATIONS ──────────────────────────────────────────────────────
+
   const addToCart = (product) => {
     if (!product) { Alert.alert('Error', 'Produk tidak valid'); return; }
     const unitCode = product.code || product.unit_code || product.barcode;
@@ -137,57 +165,75 @@ export const useTransactionLogic = (navigation) => {
       Alert.alert('Error', `Produk "${product.name}" tidak memiliki kode unit yang valid.`);
       return;
     }
-    const price = parseFloat(product.price) || 0;
-    const existingItem = cart.find((item) => item.id === product.id);
-    if (existingItem) {
-      setCart(cart.map((item) =>
-        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-    } else {
-      setCart([...cart, {
-        id: product.id,
-        product_id: product.id,
-        name: product.name,
-        code: unitCode.trim().toUpperCase(),
-        unit_code: unitCode.trim().toUpperCase(),
-        price,
-        quantity: 1,
-        color: product.color || null,
-        size: product.size || null,
-        discount_price: product.discount_price || null,
-      }]);
+    if (cart.find((item) => item.id === product.id)) {
+      Alert.alert('Info', `${product.name} sudah ada di keranjang`);
+      return;
     }
+    setCart([...cart, {
+      id: product.id,
+      product_id: product.id,
+      name: product.name,
+      code: unitCode.trim().toUpperCase(),
+      unit_code: unitCode.trim().toUpperCase(),
+      selling_price: parseFloat(product.selling_price || product.price) || 0,
+      price: parseFloat(product.selling_price || product.price) || 0,
+      discount_price: product.discount_price ? parseFloat(product.discount_price) : null,
+      quantity: 1,
+      color: product.color || null,
+      size: product.size || null,
+      production_code: product.production_code || null,
+    }]);
     Alert.alert('Berhasil', `${product.name} ditambahkan ke keranjang`);
   };
 
-  const removeFromCart = (productId) => setCart(cart.filter((item) => item.id !== productId));
-
-  const updateQuantity = (productId, newQuantity) => {
-    if (newQuantity <= 0) { removeFromCart(productId); return; }
-    setCart(cart.map((item) =>
-      item.id === productId ? { ...item, quantity: newQuantity } : item
-    ));
+  const removeFromCart = (productId) => {
+    setCart(cart.filter((item) => item.id !== productId));
+    setItemNewPrices((prev) => {
+      const updated = { ...prev };
+      delete updated[productId];
+      return updated;
+    });
   };
 
-  // Price calculations
+  // Handler per-item: format rupiah otomatis
+  const updateItemNewPrice = (productId, rawText) => {
+    const formatted = formatRupiahOnChange(rawText);
+    setItemNewPrices((prev) => ({ ...prev, [productId]: formatted }));
+  };
+
+  // Handler harga baru keseluruhan: format rupiah otomatis
+  const handleNewPriceChange = (rawText) => {
+    setNewPrice(formatRupiahOnChange(rawText));
+  };
+
+  // ── PRICE CALCULATIONS ───────────────────────────────────────────────────
+
+  const getEffectivePricePerItem = (item) => {
+    const itemNewPriceVal = parseRupiahInput(itemNewPrices[item.id]);
+    if (itemNewPriceVal > 0) return itemNewPriceVal;
+    if (item.discount_price && parseFloat(item.discount_price) > 0) {
+      return parseFloat(item.discount_price);
+    }
+    return parseFloat(item.selling_price || item.price) || 0;
+  };
+
   const calculateSubtotal = () =>
-    cart.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1), 0);
+    cart.reduce((sum, item) => sum + getEffectivePricePerItem(item), 0);
 
   const calculateDiscountAmount = () => {
     const subtotal = calculateSubtotal();
-    if (newPrice && parseFloat(newPrice) > 0) {
-      return Math.max(0, subtotal - parseFloat(newPrice));
-    }
+    const newPriceVal = parseRupiahInput(newPrice);
+    if (newPriceVal > 0) return Math.max(0, subtotal - newPriceVal);
     return 0;
   };
 
   const calculateTotal = () => {
-    const subtotal = calculateSubtotal();
-    if (newPrice && parseFloat(newPrice) > 0) return parseFloat(newPrice);
-    return subtotal;
+    const newPriceVal = parseRupiahInput(newPrice);
+    if (newPriceVal > 0) return newPriceVal;
+    return calculateSubtotal();
   };
 
-  // ── CHECKOUT dengan integrasi Struk ──────────────────────────────────────
+  // ── CHECKOUT ─────────────────────────────────────────────────────────────
   const handleCheckout = async () => {
     if (cart.length === 0) { Alert.alert('Error', 'Keranjang masih kosong'); return; }
     if (!customerData.payment_method) { Alert.alert('Error', 'Pilih metode pembayaran'); return; }
@@ -206,23 +252,21 @@ export const useTransactionLogic = (navigation) => {
       return;
     }
 
-    if (newPrice?.trim() !== '') {
+    const newPriceVal = parseRupiahInput(newPrice);
+    if (newPrice && newPrice.trim() !== '') {
       const subtotal = calculateSubtotal();
-      const newTotalValue = parseFloat(newPrice);
-      if (isNaN(newTotalValue) || newTotalValue < 0) {
+      if (isNaN(newPriceVal) || newPriceVal < 0) {
         Alert.alert('Error', 'Harga baru tidak valid.');
         return;
       }
-      if (newTotalValue > subtotal) {
-        Alert.alert('Error', `Harga baru tidak boleh melebihi subtotal.`);
+      if (newPriceVal > subtotal) {
+        Alert.alert('Error', 'Harga baru tidak boleh melebihi subtotal.');
         return;
       }
     }
 
     setLoading(true);
-
     try {
-      const subtotal = calculateSubtotal();
       const discountAmountValue = calculateDiscountAmount();
       const finalTotal = calculateTotal();
 
@@ -232,24 +276,25 @@ export const useTransactionLogic = (navigation) => {
         customerEmail: null,
         paymentMethod: customerData.payment_method.trim(),
         cardType: customerData.payment_method === 'debit' ? customerData.card_type : null,
-        overallNewPrice: newPrice?.trim() ? parseFloat(newPrice) : null,
+        overallNewPrice: newPriceVal > 0 ? newPriceVal : null,
         discountAmount: discountAmountValue,
         products: cart.map((item) => {
           const productId = item.product_id || item.id;
           const unitCode = (item.unit_code || item.code || '').trim().toUpperCase();
           if (!productId) throw new Error(`Produk "${item.name}" tidak memiliki ID`);
           if (!unitCode) throw new Error(`Produk "${item.name}" tidak memiliki kode unit`);
+          const itemNewPriceVal = parseRupiahInput(itemNewPrices[item.id]);
           return {
             product_id: productId,
             unit_code: unitCode,
-            quantity: parseInt(item.quantity) || 1,
-            new_price: null,
+            quantity: 1,
+            new_price: (!newPriceVal && itemNewPriceVal > 0) ? itemNewPriceVal : null,
+            effective_price: getEffectivePricePerItem(item),
           };
         }),
         notes: customerData.notes?.trim() || null,
       };
 
-      // Simpan snapshot cart & customerData sebelum di-reset (untuk struk)
       const cartSnapshot = [...cart];
       const customerSnapshot = { ...customerData };
 
@@ -257,47 +302,33 @@ export const useTransactionLogic = (navigation) => {
       try {
         result = await createTransaction(transactionData);
       } catch (error) {
-        const errorMessage = error.message || error.response?.data?.message || 'Gagal membuat transaksi';
-        Alert.alert('Error', errorMessage);
+        Alert.alert('Error', error.message || error.response?.data?.message || 'Gagal membuat transaksi');
         setLoading(false);
         return;
       }
 
       if (result && result.success) {
-        console.log('✅ Transaction successful:', result.data);
-
-        // ── Build & simpan struk ───────────────────────────────────────────
         const receiptData = await buildReceiptData(
-          result,
-          cartSnapshot,
-          customerSnapshot,
-          finalTotal,
-          discountAmountValue
+          result, cartSnapshot, customerSnapshot, finalTotal, discountAmountValue
         );
         await saveReceiptToStorage(receiptData);
         setCurrentReceiptData(receiptData);
-
-        // Reset state transaksi
         setCart([]);
+        setItemNewPrices({});
         dispatchCustomer({ type: 'RESET' });
         setNewPrice('');
-
-        // Tampilkan modal struk
         setLoading(false);
         setShowStruk(true);
       } else {
-        const errorMessage = result?.error || result?.message || 'Gagal membuat transaksi';
-        Alert.alert('Error', errorMessage);
+        Alert.alert('Error', result?.error || result?.message || 'Gagal membuat transaksi');
       }
     } catch (error) {
-      const errorMessage = error.message || error.response?.data?.message || 'Gagal membuat transaksi';
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Error', error.message || error.response?.data?.message || 'Gagal membuat transaksi');
     } finally {
       setLoading(false);
     }
   };
 
-  // Tutup struk & navigate
   const handleCloseStruk = () => {
     setShowStruk(false);
     setCurrentReceiptData(null);
@@ -305,23 +336,16 @@ export const useTransactionLogic = (navigation) => {
       'Transaksi Berhasil',
       'Transaksi telah disimpan.',
       [
-        {
-          text: 'Lihat Transaksi',
-          onPress: () => navigation.navigate('MainApp', { screen: 'Transaksi' }),
-        },
+        { text: 'Lihat Transaksi', onPress: () => navigation.navigate('MainApp', { screen: 'Transaksi' }) },
         { text: 'OK', onPress: () => navigation.goBack() },
       ]
     );
   };
 
-  // Scanner operations
   const openScanner = () => {
-    if (loading) { Alert.alert('Tunggu', 'Data produk sedang dimuat.'); return; }
-    if (!isProductsLoaded) { Alert.alert('Tunggu', 'Data produk sedang dimuat.'); return; }
+    if (loading || !isProductsLoaded) { Alert.alert('Tunggu', 'Data produk sedang dimuat.'); return; }
     if (products.length === 0) {
-      Alert.alert(
-        'Tidak Ada Data',
-        'Tidak ada produk tersedia.',
+      Alert.alert('Tidak Ada Data', 'Tidak ada produk tersedia.',
         [{ text: 'Refresh', onPress: loadProducts }, { text: 'OK' }]
       );
       return;
@@ -333,19 +357,19 @@ export const useTransactionLogic = (navigation) => {
     if (!cartItem?.id) { Alert.alert('Info', 'Hasil scan tidak cocok dengan produk'); return; }
     const unitCode = cartItem.code || cartItem.unit_code;
     if (!unitCode?.trim()) { Alert.alert('Error', 'Produk dari scan tidak memiliki kode unit.'); return; }
-
-    const existingItem = cart.find((item) => item.id === cartItem.id);
-    if (existingItem) {
-      setCart(cart.map((item) =>
-        item.id === cartItem.id ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-    } else {
-      setCart([...cart, {
-        ...cartItem,
-        code: unitCode.trim().toUpperCase(),
-        unit_code: unitCode.trim().toUpperCase(),
-      }]);
+    if (cart.find((item) => item.id === cartItem.id)) {
+      Alert.alert('Info', `${cartItem.name} sudah ada di keranjang`);
+      return;
     }
+    setCart([...cart, {
+      ...cartItem,
+      code: unitCode.trim().toUpperCase(),
+      unit_code: unitCode.trim().toUpperCase(),
+      selling_price: parseFloat(cartItem.selling_price || cartItem.price) || 0,
+      price: parseFloat(cartItem.selling_price || cartItem.price) || 0,
+      discount_price: cartItem.discount_price ? parseFloat(cartItem.discount_price) : null,
+      quantity: 1,
+    }]);
     setTimeout(() => Alert.alert('Berhasil', `${cartItem.name} ditambahkan dari scan`), 300);
   };
 
@@ -355,43 +379,23 @@ export const useTransactionLogic = (navigation) => {
   };
 
   return {
-    // State
-    products,
-    filteredProducts,
-    currentProducts,
-    searchQuery,
-    setSearchQuery,
-    cart,
-    loading,
-    showScanner,
-    setShowScanner,
+    products, filteredProducts, currentProducts,
+    searchQuery, setSearchQuery,
+    cart, loading,
+    showScanner, setShowScanner,
     isProductsLoaded,
-    currentPage,
-    totalPages,
-    newPrice,
-    setNewPrice,
-    customerData,
-    dispatchCustomer,
-
-    // Struk state
-    showStruk,
-    setShowStruk,
-    currentReceiptData,
-    handleCloseStruk,
-
-    // Functions
+    currentPage, totalPages,
+    newPrice, handleNewPriceChange,
+    customerData, dispatchCustomer,
+    itemNewPrices, updateItemNewPrice,
+    getEffectivePricePerItem, parseRupiahInput,
+    showStruk, setShowStruk,
+    currentReceiptData, handleCloseStruk,
     loadProducts,
-    handlePrevious,
-    handleNext,
-    addToCart,
-    removeFromCart,
-    updateQuantity,
-    calculateSubtotal,
-    calculateDiscountAmount,
-    calculateTotal,
+    handlePrevious, handleNext,
+    addToCart, removeFromCart,
+    calculateSubtotal, calculateDiscountAmount, calculateTotal,
     handleCheckout,
-    openScanner,
-    handleScanSuccess,
-    handleScanError,
+    openScanner, handleScanSuccess, handleScanError,
   };
 };
