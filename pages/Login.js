@@ -15,29 +15,39 @@ import {
 import { Octicons } from '@expo/vector-icons';
 import { loginUser, loadSavedCredentials } from '../login auth/authService';
 
-const Login = ({ onLoginSuccess }) => {
+const Login = ({ navigation, onLoginSuccess }) => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const { rememberMe: savedRemember, savedEmail } = await loadSavedCredentials();
-        if (savedRemember && savedEmail) {
-          setFormData(prev => ({ ...prev, email: savedEmail }));
-          setRememberMe(true);
-        }
-      } catch (err) {
-        // silent fail — optional logging: console.warn(err);
-      }
-    })();
+    loadCredentials();
   }, []);
 
+  const loadCredentials = async () => {
+    try {
+      const { rememberMe: savedRemember, savedEmail } = await loadSavedCredentials();
+      if (savedRemember && savedEmail) {
+        setFormData(prev => ({ ...prev, email: savedEmail }));
+        setRememberMe(true);
+      }
+    } catch (err) {
+      console.warn('Error loading credentials:', err);
+    }
+  };
+
   const handleLogin = async () => {
+    // Validasi input
+    if (!formData.email || !formData.password) {
+      Alert.alert('Error', 'Email dan password harus diisi');
+      return;
+    }
+
     try {
       setIsLoading(true);
       const result = await loginUser(formData.email, formData.password, rememberMe);
+      
+      // Callback ke App.js untuk update state
       onLoginSuccess(result);
     } catch (error) {
       Alert.alert('Login Gagal', error?.message || 'Terjadi kesalahan');
@@ -46,12 +56,17 @@ const Login = ({ onLoginSuccess }) => {
     }
   };
 
+  const handleForgotPassword = () => {
+    navigation.navigate('ForgotPassword');
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Logo Section */}
         <View style={styles.logoContainer}>
           <View style={styles.logoCircle}>
             <Octicons name="package" size={48} color="#FFFFFF" />
@@ -60,10 +75,12 @@ const Login = ({ onLoginSuccess }) => {
           <Text style={styles.brandTagline}>Sistem Manajemen Toko Sepatu</Text>
         </View>
 
+        {/* Form Section */}
         <View style={styles.formContainer}>
           <Text style={styles.welcomeText}>Selamat Datang</Text>
           <Text style={styles.subtitleText}>Silakan login untuk melanjutkan</Text>
 
+          {/* Email Input */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>
             <View style={styles.inputWrapper}>
@@ -80,6 +97,7 @@ const Login = ({ onLoginSuccess }) => {
             </View>
           </View>
 
+          {/* Password Input */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Password</Text>
             <View style={styles.inputWrapper}>
@@ -95,6 +113,7 @@ const Login = ({ onLoginSuccess }) => {
             </View>
           </View>
 
+          {/* Remember Me & Forgot Password */}
           <View style={styles.optionsContainer}>
             <TouchableOpacity
               style={styles.rememberMeContainer}
@@ -108,13 +127,14 @@ const Login = ({ onLoginSuccess }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => Alert.alert('Info', 'Fitur lupa password belum tersedia.')}
+              onPress={handleForgotPassword}
               disabled={isLoading}
             >
               <Text style={styles.forgotPasswordText}>Lupa Password?</Text>
             </TouchableOpacity>
           </View>
 
+          {/* Login Button */}
           <TouchableOpacity
             style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
             onPress={handleLogin}
@@ -130,14 +150,19 @@ const Login = ({ onLoginSuccess }) => {
             )}
           </TouchableOpacity>
 
+          {/* Register Link */}
           <View style={styles.registerContainer}>
             <Text style={styles.registerText}>Belum punya akun? </Text>
-            <TouchableOpacity onPress={() => Alert.alert('Info', 'Hubungi admin untuk membuat akun baru')}>
+            <TouchableOpacity 
+              onPress={() => Alert.alert('Info', 'Hubungi admin untuk membuat akun baru')}
+              disabled={isLoading}
+            >
               <Text style={styles.registerLink}>Hubungi Admin</Text>
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* Footer */}
         <Text style={styles.footerText}>© 2025 SepatuBySovan. All rights reserved.</Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -145,9 +170,20 @@ const Login = ({ onLoginSuccess }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5ECE4' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40 },
-  logoContainer: { alignItems: 'center', marginBottom: 40 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#F5ECE4' 
+  },
+  scrollContent: { 
+    flexGrow: 1, 
+    paddingHorizontal: 24, 
+    paddingTop: 60, 
+    paddingBottom: 40 
+  },
+  logoContainer: { 
+    alignItems: 'center', 
+    marginBottom: 40 
+  },
   logoCircle: {
     width: 100,
     height: 100,
@@ -157,8 +193,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  brandName: { fontSize: 32, fontWeight: 'bold', color: '#292929', marginBottom: 8 },
-  brandTagline: { fontSize: 14, color: '#585757' },
+  brandName: { 
+    fontSize: 32, 
+    fontWeight: 'bold', 
+    color: '#292929', 
+    marginBottom: 8 
+  },
+  brandTagline: { 
+    fontSize: 14, 
+    color: '#585757' 
+  },
   formContainer: {
     backgroundColor: '#FFF',
     borderRadius: 24,
@@ -170,10 +214,26 @@ const styles = StyleSheet.create({
     elevation: 4,
     marginBottom: 24,
   },
-  welcomeText: { fontSize: 28, fontWeight: 'bold', color: '#292929', marginBottom: 8 },
-  subtitleText: { fontSize: 14, color: '#585757', marginBottom: 24 },
-  inputContainer: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#292929', marginBottom: 8 },
+  welcomeText: { 
+    fontSize: 28, 
+    fontWeight: 'bold', 
+    color: '#292929', 
+    marginBottom: 8 
+  },
+  subtitleText: { 
+    fontSize: 14, 
+    color: '#585757', 
+    marginBottom: 24 
+  },
+  inputContainer: { 
+    marginBottom: 20 
+  },
+  label: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#292929', 
+    marginBottom: 8 
+  },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -183,23 +243,94 @@ const styles = StyleSheet.create({
     borderColor: '#585757',
     paddingHorizontal: 16,
   },
-  inputIcon: { marginRight: 12 },
-  input: { flex: 1, height: 50, fontSize: 16, color: '#292929' },
-  optionsContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  rememberMeContainer: { flexDirection: 'row', alignItems: 'center' },
-  checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: '#585757', marginRight: 8, justifyContent: 'center', alignItems: 'center' },
-  checkboxChecked: { backgroundColor: '#FC6A0A', borderColor: '#FC6A0A' },
-  rememberMeText: { fontSize: 14, color: '#585757' },
-  forgotPasswordText: { fontSize: 14, color: '#FC6A0A', fontWeight: '600' },
-  loginButton: { backgroundColor: '#FC6A0A', borderRadius: 12, height: 50, justifyContent: 'center', alignItems: 'center' },
-  loginButtonDisabled: { opacity: 0.6 },
-  loadingContainer: { flexDirection: 'row', alignItems: 'center' },
-  loadingText: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
-  loginButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
-  registerContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  registerText: { fontSize: 14, color: '#585757' },
-  registerLink: { fontSize: 14, color: '#FC6A0A', fontWeight: '600' },
-  footerText: { textAlign: 'center', fontSize: 12, color: '#585757' },
+  inputIcon: { 
+    marginRight: 12 
+  },
+  input: { 
+    flex: 1, 
+    height: 50, 
+    fontSize: 16, 
+    color: '#292929' 
+  },
+  optionsContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 24 
+  },
+  rememberMeContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  checkbox: { 
+    width: 20, 
+    height: 20, 
+    borderRadius: 4, 
+    borderWidth: 2, 
+    borderColor: '#585757', 
+    marginRight: 8, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  checkboxChecked: { 
+    backgroundColor: '#FC6A0A', 
+    borderColor: '#FC6A0A' 
+  },
+  rememberMeText: { 
+    fontSize: 14, 
+    color: '#585757' 
+  },
+  forgotPasswordText: { 
+    fontSize: 14, 
+    color: '#FC6A0A', 
+    fontWeight: '600' 
+  },
+  loginButton: { 
+    backgroundColor: '#FC6A0A', 
+    borderRadius: 12, 
+    height: 50, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  loginButtonDisabled: { 
+    opacity: 0.6 
+  },
+  loadingContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  loadingText: { 
+    color: '#FFF', 
+    fontSize: 16, 
+    fontWeight: 'bold', 
+    marginLeft: 8 
+  },
+  loginButtonText: { 
+    color: '#FFF', 
+    fontSize: 16, 
+    fontWeight: 'bold' 
+  },
+  registerContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  registerText: { 
+    fontSize: 14, 
+    color: '#585757' 
+  },
+  registerLink: { 
+    fontSize: 14, 
+    color: '#FC6A0A', 
+    fontWeight: '600' 
+  },
+  footerText: { 
+    textAlign: 'center', 
+    fontSize: 12, 
+    color: '#585757',
+    marginTop: 'auto',
+  },
 });
 
 export default Login;

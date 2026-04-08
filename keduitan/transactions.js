@@ -1,5 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useState } from 'react';
+import { SafeAreaView, TouchableOpacity, Text } from 'react-native';
+import QRScan from './qrscan';
 
 const BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
 
@@ -48,22 +51,42 @@ export const getTransactions = async () => {
 
 /**
  * Create new transaction
- * @param {Object} data - Transaction data
+ * @param {Object} data - Transaction data dengan format API yang sesuai
  * @returns {Promise} Created transaction
  */
 export const createTransaction = async (data) => {
   try {
+    if (!data || !data.products || data.products.length === 0) {
+      return {
+        success: false,
+        error: 'Produk tidak boleh kosong',
+      };
+    }
+
+    if (!data.customerName) {
+      return {
+        success: false,
+        error: 'Nama pelanggan harus diisi',
+      };
+    }
+
     const config = await getAxiosConfig();
+    console.log('Sending transaction to:', `${BASE_URL}/transactions`);
+    console.log('Transaction payload:', data);
+    
     const response = await axios.post(`${BASE_URL}/transactions`, data, config);
+    
     return {
       success: true,
       data: response.data,
     };
   } catch (error) {
     console.error('Error creating transaction:', error);
+    console.error('Error response:', error.response?.data);
+    
     return {
       success: false,
-      error: error.response?.data?.message || 'Failed to create transaction',
+      error: error.response?.data?.message || error.response?.data?.error || error.message || 'Gagal membuat transaksi',
     };
   }
 };
@@ -91,12 +114,15 @@ export const getTransactionById = async (id) => {
 };
 
 /**
- * Filter transactions by date range and/or keyword
+ * Filter transactions by date, payment method, and status
+ * Compatible with TransactionScreen.js usage
  * @param {Object} params - Filter parameters
- * @param {string} params.startDate - Start date (YYYY-MM-DD)
- * @param {string} params.endDate - End date (YYYY-MM-DD)
+ * @param {string} params.date - Date (YYYY-MM-DD)
+ * @param {string} params.payment_method - Payment method (cash, qris, transfer, debit)
+ * @param {string} params.status - Transaction status (paid, unpaid)
+ * @param {string} params.startDate - Start date (YYYY-MM-DD) - alternative
+ * @param {string} params.endDate - End date (YYYY-MM-DD) - alternative
  * @param {string} params.keyword - Search keyword
- * @param {string} params.status - Transaction status
  * @returns {Promise} Filtered transactions
  */
 export const filterTransactions = async (params) => {
@@ -104,13 +130,32 @@ export const filterTransactions = async (params) => {
     const config = await getAxiosConfig();
     const queryParams = new URLSearchParams();
     
-    if (params.startDate) queryParams.append('start_date', params.startDate);
-    if (params.endDate) queryParams.append('end_date', params.endDate);
-    if (params.keyword) queryParams.append('keyword', params.keyword);
-    if (params.status) queryParams.append('status', params.status);
+    // Support both 'date' and 'startDate/endDate' formats
+    if (params.date) {
+      queryParams.append('date', params.date);
+    }
+    if (params.startDate) {
+      queryParams.append('start_date', params.startDate);
+    }
+    if (params.endDate) {
+      queryParams.append('end_date', params.endDate);
+    }
+    if (params.payment_method) {
+      queryParams.append('payment_method', params.payment_method);
+    }
+    if (params.status) {
+      queryParams.append('status', params.status);
+    }
+    if (params.keyword) {
+      queryParams.append('keyword', params.keyword);
+    }
     
     const url = `${BASE_URL}/transactions?${queryParams.toString()}`;
+    console.log('Filter URL:', url);
+    
     const response = await axios.get(url, config);
+    
+    console.log('Filter response:', response.data);
     
     return {
       success: true,
@@ -121,6 +166,7 @@ export const filterTransactions = async (params) => {
     return {
       success: false,
       error: error.response?.data?.message || 'Failed to filter transactions',
+      data: [],
     };
   }
 };
@@ -197,4 +243,87 @@ export const getTransactionStats = async (params = {}) => {
       error: error.response?.data?.message || 'Failed to fetch statistics',
     };
   }
+};
+
+/**
+ * Add product by scanning QR code
+ * @param {string} unitCode - Unit code from QR
+ * @returns {Promise<Object>} Product data
+ */
+export const addProductByQR = async (unitCode) => {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${BASE_URL}/products/qr/${unitCode}`, config);
+    
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('Error scanning QR:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Product not found',
+    };
+  }
+};
+
+// ===================================================================
+// QR Scanner UI wrapper component
+// - safe to import and use inside screens that need QR scanning UI
+// - keeps transactions API helpers separate from UI logic
+// ===================================================================
+export const QRScannerWrapper = ({
+  availableUnits = [],
+  cart = [],
+  darkMode = false,
+  onAddToCart = () => {},
+  fetchUnits = async () => {},
+  showButton = true,
+  buttonStyle,
+  buttonTextStyle,
+}) => {
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [hasScanned, setHasScanned] = useState(false);
+
+  return (
+    <SafeAreaView>
+      {showButton && (
+        <TouchableOpacity
+          style={buttonStyle}
+          onPress={() => {
+            setShowQRScanner(true);
+            setHasScanned(false);
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={buttonTextStyle}>📷 Scan QR Code</Text>
+        </TouchableOpacity>
+      )}
+
+      <QRScan
+        visible={showQRScanner}
+        availableUnits={availableUnits}
+        cart={cart}
+        darkMode={darkMode}
+        onClose={() => {
+          setShowQRScanner(false);
+          setHasScanned(false);
+        }}
+        onScanSuccess={(newCartItem, unit) => {
+          // bubble up to parent screen
+          onAddToCart(newCartItem, unit);
+          setShowQRScanner(false);
+          setHasScanned(false);
+        }}
+        onScanError={(title, message) => {
+          // parent screen may choose to show a popup
+          console.warn('QRScan error:', title, message);
+          setShowQRScanner(false);
+          setHasScanned(false);
+        }}
+        onRequestRefresh={fetchUnits}
+      />
+    </SafeAreaView>
+  );
 };
