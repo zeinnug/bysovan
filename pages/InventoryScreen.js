@@ -20,7 +20,7 @@ import HistoryModal from '../components/HistoryModal';
 import QRCodeModal from '../components/QRCodeModal';
 
 // Import API Services
-import { inventoryAPI, dummyData } from '../data/api';
+import { getProducts, createProduct, deleteProduct } from '../data/services';
 
 const InventoryScreen = ({ navigation }) => {
   // State Management
@@ -64,17 +64,100 @@ const InventoryScreen = ({ navigation }) => {
   const loadInventoryData = useCallback(async () => {
     setIsLoading(true);
     
-    const result = await inventoryAPI.getProducts();
-    
-    if (result.success) {
-      setInventoryData(result.data);
-      setFilteredProducts(result.data.products);
-    } else {
-      // Fallback ke dummy data
-      const dummyDataProducts = dummyData.getDummyProducts();
-      setInventoryData(dummyDataProducts);
-      setFilteredProducts(dummyDataProducts.products);
-      Alert.alert('Peringatan', 'Gagal memuat data. Menampilkan data contoh.');
+    try {
+      const result = await getProducts();
+      
+      // 🔥 DEBUGGING: Log raw response
+      console.log('=== RAW API RESPONSE ===');
+      console.log('Success:', result.success);
+      console.log('Full Data:', JSON.stringify(result.data, null, 2));
+      
+      if (result.success && result.data.products) {
+        // 🔥 DEBUGGING: Log first product
+        console.log('=== FIRST PRODUCT DETAILS ===');
+        console.log(JSON.stringify(result.data.products[0], null, 2));
+        
+        // Transform data to match expected format
+        const mappedProducts = result.data.products.map((p, index) => {
+            // 🔥 DEBUGGING: Log transformation
+            console.log(`=== TRANSFORMING PRODUCT ${index + 1} ===`);
+            console.log('Original:', p);
+            
+            // Generate barcode jika tidak ada
+            let barcodeValue = '';
+            if (p.units && p.units.length > 0 && p.units[0].unitCode) {
+              barcodeValue = p.units[0].unitCode;
+            } else if (p.barcode) {
+              barcodeValue = p.barcode;
+            } else if (p.id) {
+              // Auto-generate barcode dari product ID
+              barcodeValue = `BYS${p.id}${Date.now().toString().slice(-6)}`;
+            }
+            
+            const transformed = {
+              id: p.id,
+              nama: p.name || p.model || '-',
+              merek: p.brand || '-',
+              model: p.model || '-',
+              ukuran: p.size || '-',
+              warna: p.color || '-',
+              hargaJual: parseFloat(p.sellingPrice) || parseFloat(p.selling_price) || 0,
+              hargaDiskon: parseFloat(p.discountPrice) || parseFloat(p.discount_price) || 0,
+              stok: parseInt(p.stock) || 0,
+              barcode: barcodeValue,
+              kategori: p.brand || '-',
+            };
+            
+            console.log('Transformed:', transformed);
+            console.log('Barcode:', transformed.barcode);
+            console.log('Harga Jual:', transformed.hargaJual);
+            
+            return transformed;
+          });
+
+        // Compute fallback statistics when API doesn't provide them or uses different keys
+        const totalProdukFallback = mappedProducts.length;
+        const totalStokFallback = mappedProducts.reduce((sum, prod) => sum + (parseInt(prod.stok) || 0), 0);
+        // Define low stock threshold (fallback). Prefer API value when available.
+        const LOW_STOCK_THRESHOLD = 5;
+        const stokMenipisFallback = mappedProducts.filter(prod => (parseInt(prod.stok) || 0) <= LOW_STOCK_THRESHOLD).length;
+
+        const transformedData = {
+          totalProduk: result.data.statistics?.totalProducts || result.data.statistics?.total_products || totalProdukFallback,
+          stokMenipis: result.data.statistics?.lowStockProducts || result.data.statistics?.low_stock_products || stokMenipisFallback,
+          totalStok: result.data.statistics?.totalStock || result.data.statistics?.total_stock || totalStokFallback,
+          products: mappedProducts,
+        };
+
+        // 🔥 DEBUGGING: Log final transformed data
+        console.log('=== FINAL TRANSFORMED DATA ===');
+        console.log('Total Products (api/stat/fallback):', transformedData.totalProduk);
+        console.log('Total Stok (api/stat/fallback):', transformedData.totalStok);
+        console.log('Stok Menipis (api/stat/fallback):', transformedData.stokMenipis);
+        console.log('First Product:', transformedData.products[0]);
+
+        setInventoryData(transformedData);
+        setFilteredProducts(transformedData.products);
+      } else {
+        Alert.alert('Error', result.message || 'Gagal memuat data produk');
+        setInventoryData({
+          totalProduk: 0,
+          stokMenipis: 0,
+          totalStok: 0,
+          products: []
+        });
+        setFilteredProducts([]);
+      }
+    } catch (error) {
+      console.error('❌ Error loading inventory:', error);
+      Alert.alert('Error', error.message || 'Gagal memuat data produk');
+      setInventoryData({
+        totalProduk: 0,
+        stokMenipis: 0,
+        totalStok: 0,
+        products: []
+      });
+      setFilteredProducts([]);
     }
     
     setIsLoading(false);
@@ -83,15 +166,10 @@ const InventoryScreen = ({ navigation }) => {
 
   // Fetch History Data
   const loadHistoryData = async () => {
-    const result = await inventoryAPI.getHistory();
-
-    if (result.success) {
-      setHistoryData(result.data);
-    } else if (result.fallback) {
-      // fallback jika 404
-      setHistoryData(dummyData.getDummyHistory());
-      Alert.alert('Info', 'Data riwayat tidak ditemukan, menampilkan data contoh.');
-    } else {
+    try {
+      setHistoryData([]);
+    } catch (error) {
+      console.error('Error loading history:', error);
       setHistoryData([]);
       Alert.alert('Error', 'Gagal memuat data riwayat.');
     }
@@ -131,28 +209,29 @@ const InventoryScreen = ({ navigation }) => {
     setShowHistoryModal(true);
   };
 
-  // PERBAIKAN: Handler untuk menampilkan QR Code
   const handleShowQR = (product) => {
-    // Validasi produk
+    // 🔥 DEBUGGING: Log product saat QR ditampilkan
+    console.log('=== SHOW QR MODAL ===');
+    console.log('Product Data:', product);
+    console.log('Barcode:', product?.barcode);
+    console.log('Harga Jual:', product?.hargaJual);
+    
     if (!product) {
       Alert.alert('Error', 'Data produk tidak valid');
       return;
     }
 
-    // Debugging log (opsional, bisa dihapus di production)
-    console.log('Product untuk QR Code:', product);
+    if (!product.barcode) {
+      Alert.alert('Error', 'Produk tidak memiliki barcode');
+      return;
+    }
 
-    // Set produk yang dipilih
     setSelectedProduct(product);
-    
-    // Tampilkan modal QR
     setShowQRModal(true);
   };
 
-  // Handler untuk menutup modal QR
   const handleCloseQR = () => {
     setShowQRModal(false);
-    // Reset selected product setelah delay kecil untuk animasi
     setTimeout(() => {
       setSelectedProduct(null);
     }, 300);
@@ -160,7 +239,6 @@ const InventoryScreen = ({ navigation }) => {
 
   const handleEditProduct = (product) => {
     Alert.alert('Info', 'Fitur Edit Produk akan segera ditambahkan');
-    // TODO: Implementasi edit produk
   };
 
   const handleDeleteProduct = (productId) => {
@@ -176,13 +254,18 @@ const InventoryScreen = ({ navigation }) => {
           text: 'Hapus',
           style: 'destructive',
           onPress: async () => {
-            const result = await inventoryAPI.deleteProduct(productId);
-            
-            if (result.success) {
-              Alert.alert('Berhasil', 'Produk berhasil dihapus');
-              loadInventoryData();
-            } else {
-              Alert.alert('Error', 'Gagal menghapus produk');
+            try {
+              const result = await deleteProduct(productId);
+              
+              if (result.success) {
+                Alert.alert('Berhasil', 'Produk berhasil dihapus');
+                loadInventoryData();
+              } else {
+                Alert.alert('Error', result.message || 'Gagal menghapus produk');
+              }
+            } catch (error) {
+              console.error('Error deleting product:', error);
+              Alert.alert('Error', error.message || 'Gagal menghapus produk');
             }
           }
         }
@@ -214,7 +297,6 @@ const InventoryScreen = ({ navigation }) => {
   };
 
   const handleSubmitProduct = async () => {
-    // Validasi
     if (!formData.namaProduk || !formData.hargaJual || !formData.stokAwal) {
       Alert.alert(
         'Validasi', 
@@ -225,11 +307,9 @@ const InventoryScreen = ({ navigation }) => {
 
     setIsSubmitting(true);
 
-    // ✅ AUTO-GENERATE BARCODE jika kosong
     let barcodeToSave = formData.barcode;
     
     if (!barcodeToSave || barcodeToSave.trim() === '') {
-      // Generate barcode otomatis
       const timestamp = Date.now();
       const random = Math.floor(1000 + Math.random() * 9000);
       barcodeToSave = `BYS${timestamp}${random}`;
@@ -237,29 +317,36 @@ const InventoryScreen = ({ navigation }) => {
       console.log('🔥 Barcode auto-generated:', barcodeToSave);
     }
 
-    // Data yang akan dikirim ke API dengan barcode yang sudah ada/generated
-    const dataToSubmit = {
-      ...formData,
-      barcode: barcodeToSave
+    const productData = {
+      brand: formData.merek || '',
+      model: formData.namaProduk || '',
+      color: formData.warna || '',
+      sizes: formData.ukuran ? [{ size: formData.ukuran, stock: parseInt(formData.stokAwal) || 0 }] : [],
+      sellingPrice: parseFloat(formData.hargaJual) || 0,
+      discountPrice: formData.hargaDiskon ? parseFloat(formData.hargaDiskon) : null,
     };
 
-    const result = await inventoryAPI.addProduct(dataToSubmit);
+    try {
+      const result = await createProduct(productData);
 
-    if (result.success) {
-      Alert.alert(
-        'Berhasil!', 
-        `Produk berhasil ditambahkan!\nBarcode: ${barcodeToSave}`
-      );
-      handleCloseAddModal();
-      loadInventoryData();
-    } else {
-      Alert.alert('Error', result.error || 'Terjadi kesalahan saat menambahkan produk');
+      if (result.success) {
+        Alert.alert(
+          'Berhasil!', 
+          `Produk berhasil ditambahkan!`
+        );
+        handleCloseAddModal();
+        loadInventoryData();
+      } else {
+        Alert.alert('Error', result.message || 'Terjadi kesalahan saat menambahkan produk');
+      }
+    } catch (error) {
+      console.error('Error creating product:', error);
+      Alert.alert('Error', error.message || 'Terjadi kesalahan saat menambahkan produk');
     }
 
     setIsSubmitting(false);
   };
 
-  // Loading State
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -271,7 +358,6 @@ const InventoryScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
@@ -295,12 +381,10 @@ const InventoryScreen = ({ navigation }) => {
           />
         }
       >
-        {/* Title Section */}
         <View style={styles.titleSection}>
           <Text style={styles.pageTitle}>MANAGEMENT INVENTORY</Text>
         </View>
 
-        {/* Info Cards */}
         <View style={styles.infoSection}>
           <Text style={styles.sectionTitle}>INVENTORY INFORMATION</Text>
           
@@ -325,7 +409,6 @@ const InventoryScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Action Section */}
         <View style={styles.actionSection}>
           <View style={styles.searchContainer}>
             <Octicons name="search" size={20} color="#585757" style={styles.searchIcon} />
@@ -349,7 +432,6 @@ const InventoryScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Product Table */}
         <ProductTable
           products={filteredProducts}
           onShowQR={handleShowQR}
@@ -360,7 +442,6 @@ const InventoryScreen = ({ navigation }) => {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Modals */}
       <AddProductModal
         visible={showAddProductModal}
         onClose={handleCloseAddModal}
