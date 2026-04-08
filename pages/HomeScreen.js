@@ -19,6 +19,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 // ✅ FIX 1: Import filterTransactions untuk hitung transaksi hari ini secara akurat
 import { filterTransactions } from '../data/services/transactionService';
+import { translateErrorMessage } from '../keduitan/sold';
 
 const { width } = Dimensions.get('window');
 const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
@@ -511,7 +512,7 @@ const HomeScreen = () => {
       setDashboardData(dummyData);
       setIsLoading(false);
       setRefreshing(false);
-      if (!isLoading) Alert.alert('Peringatan', 'Gagal memuat data dari server. Menampilkan data contoh.\n\n' + error.message);
+      if (!isLoading) Alert.alert('Peringatan', 'Gagal memuat data dari server. Menampilkan data contoh.\n\n' + translateErrorMessage(error.message));
     }
   }, [isLoading]);
 

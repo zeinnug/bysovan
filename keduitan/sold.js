@@ -29,6 +29,83 @@ export const formatRupiahOnChange = (rawText) => {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 };
 
+// ── ERROR MESSAGE TRANSLATOR ─────────────────────────────────────────────────
+/**
+ * Menerjemahkan pesan error dari API/sistem menjadi pesan yang user-friendly
+ * Digunakan di berbagai modul: sold, inventory, print, dashboard, dll
+ */
+export const translateErrorMessage = (errorMsg) => {
+  if (!errorMsg) return 'Gagal membuat transaksi';
+  
+  const msg = String(errorMsg).toLowerCase();
+  
+  // Mapping pesan API ke pesan user-friendly (comprehensive version)
+  const errorMap = {
+    // ─ TRANSACTION ERRORS ─
+    'not found or inactive': 'Produk yang dipilih sudah terjual atau sudah tidak tersedia di sistem',
+    'product unit with code': 'Produk yang dipilih sudah terjual atau sudah tidak tersedia di sistem',
+    'unit code': 'Kode unit produk tidak valid atau sudah dihapus',
+    'stock': 'Stok produk tidak mencukupi atau sudah habis',
+    'payment': 'Metode pembayaran tidak valid atau tidak tersedia',
+    
+    // ─ INVENTORY ERRORS ─
+    'duplicate product': 'Kode produk sudah ada di sistem',
+    'duplicate product code': 'Kode produk atau SKU sudah terdaftar',
+    'foreign key': 'Tidak bisa menghapus produk ini karena masih ada transaksi terkait',
+    'product has': 'Produk ini tidak bisa diubah karena sedang digunakan',
+    'sku format': 'Format kode produk tidak valid',
+    'brand not found': 'Brand tidak ditemukan di sistem',
+    
+    // ─ PERMISSION ERRORS ─
+    'permission denied': 'Anda tidak memiliki izin untuk melakukan tindakan ini',
+    'permission': 'Akses ditolak karena hak akses yang terbatas',
+    'only admin': 'Hanya admin yang dapat melakukan tindakan ini',
+    'locked': 'Produk sedang digunakan oleh user lain, coba lagi nanti',
+    
+    // ─ NETWORK ERRORS ─
+    'connection': 'Koneksi internet bermasalah, silakan periksa dan coba lagi',
+    'timeout': 'Koneksi timeout, silakan coba lagi beberapa saat',
+    'network': 'Koneksi internet putus, silakan periksa sinyal',
+    'econnrefused': 'Server tidak dapat dihubungi, coba lagi atau hubungi admin',
+    '404 not found': 'Data tidak ditemukan atau sudah dihapus',
+    '500': 'Terjadi kesalahan pada server, hubungi admin',
+    
+    // ─ PRINT/STORAGE ERRORS ─
+    'print cancelled': 'Cetak dibatalkan',
+    'printer not found': 'Printer tidak ditemukan, pastikan printer aktif',
+    'camera': 'Kamera tidak dapat diakses atau tidak tersedia',
+    'storage quota': 'Ruang penyimpanan tidak cukup',
+    'write to': 'Tidak dapat menyimpan file, periksa izin penyimpanan',
+    'file path invalid': 'Lokasi penyimpanan tidak valid',
+    
+    // ─ QR/BARCODE ERRORS ─
+    'invalid qr': 'Format QR Code tidak valid atau rusak',
+    'barcode not recognized': 'Barcode tidak dapat dibaca, pastikan QR code jelas',
+    'qr code tidak ditemukan': 'QR Code tidak terdaftar di sistem',
+    
+    // ─ DATA VALIDATION ERRORS ─
+    'invalid': 'Data tidak valid, silakan periksa kembali',
+    'required': 'Field ini wajib diisi',
+    'already exists': 'Data ini sudah terdaftar',
+    'undefined': 'Terjadi kesalahan data, silakan refresh halaman',
+    
+    // ─ GENERAL ERRORS ─
+    'cannot read': 'Terjadi kesalahan sistem, hubungi admin jika masalah berlanjut',
+    'error': 'Terjadi kesalahan, silakan coba lagi',
+  };
+  
+  // Cari keyword dalam pesan error (prioritas panjang keyword lebih panjang)
+  const sorted = Object.entries(errorMap).sort((a, b) => b[0].length - a[0].length);
+  for (const [keyword, replacement] of sorted) {
+    if (msg.includes(keyword)) {
+      return replacement;
+    }
+  }
+  
+  // Jika tidak ada keyword yang cocok, tampilkan pesan original
+  return errorMsg;
+};
+
 // ── REDUCER ──────────────────────────────────────────────────────────────────
 
 const customerReducer = (state, action) => {
@@ -302,7 +379,8 @@ export const useTransactionLogic = (navigation) => {
       try {
         result = await createTransaction(transactionData);
       } catch (error) {
-        Alert.alert('Error', error.message || error.response?.data?.message || 'Gagal membuat transaksi');
+        const errorMsg = error.message || error.response?.data?.message || 'Gagal membuat transaksi';
+        Alert.alert('Error', translateErrorMessage(errorMsg));
         setLoading(false);
         return;
       }
@@ -320,10 +398,12 @@ export const useTransactionLogic = (navigation) => {
         setLoading(false);
         setShowStruk(true);
       } else {
-        Alert.alert('Error', result?.error || result?.message || 'Gagal membuat transaksi');
+        const errorMsg = result?.error || result?.message || 'Gagal membuat transaksi';
+        Alert.alert('Error', translateErrorMessage(errorMsg));
       }
     } catch (error) {
-      Alert.alert('Error', error.message || error.response?.data?.message || 'Gagal membuat transaksi');
+      const errorMsg = error.message || error.response?.data?.message || 'Gagal membuat transaksi';
+      Alert.alert('Error', translateErrorMessage(errorMsg));
     } finally {
       setLoading(false);
     }

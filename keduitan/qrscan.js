@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { translateErrorMessage } from './sold';
 
 // Color Palette (sesuai dengan app)
 const COLORS = {
@@ -338,7 +339,7 @@ const QRCodeScanner = ({
         
         // Format error message
         let errorTitle = 'Gagal Memindai QR Code';
-        let errorMessage = error.message || 'Terjadi kesalahan saat memindai QR Code';
+        let errorMessage = translateErrorMessage(error.message || 'Terjadi kesalahan saat memindai QR Code');
 
         // Specific error handling
         if (error.message?.includes('tidak ditemukan')) {

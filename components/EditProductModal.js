@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import { updateProduct } from '../data/services/inventoryService';
+import { translateErrorMessage } from '../keduitan/sold';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -102,7 +103,7 @@ const EditProductModal = ({ visible, onClose, onSuccess, product }) => {
         Alert.alert('Error', result.message || 'Gagal memperbarui produk');
       }
     } catch (error) {
-      Alert.alert('Error', error.message || 'Gagal memperbarui produk');
+      Alert.alert('Error', translateErrorMessage(error.message || 'Gagal memperbarui produk'));
     } finally {
       setIsSubmitting(false);
     }

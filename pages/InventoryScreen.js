@@ -29,6 +29,9 @@ import { getProducts, createProduct, deleteProduct } from '../data/services';
 // Import History Manager
 import { addHistory, getHistory } from '../utils/historyManager';
 
+// Import Error Translator
+import { translateErrorMessage } from '../keduitan/sold';
+
 // ✅ FIX: Threshold stok menipis
 // unit di API TIDAK punya field stock — stok ada di product.stock langsung
 // Produk dianggap menipis jika product.stock <= threshold ini
@@ -268,7 +271,7 @@ const InventoryScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('❌ Error loading inventory:', error);
-      Alert.alert('Error', error.message || 'Gagal memuat data produk');
+      Alert.alert('Error', translateErrorMessage(error.message || 'Gagal memuat data produk'));
       setInventoryData(INITIAL_INVENTORY_STATE);
     }
 
@@ -340,7 +343,7 @@ const InventoryScreen = ({ navigation }) => {
               Alert.alert('Error', result.message || 'Gagal menghapus');
             }
           } catch (error) {
-            Alert.alert('Error', error.message || 'Gagal menghapus');
+            Alert.alert('Error', translateErrorMessage(error.message || 'Gagal menghapus'));
           }
         }
       }
@@ -392,11 +395,11 @@ const InventoryScreen = ({ navigation }) => {
         ]);
         return { success: true, data: productForQR };
       } else {
-        Alert.alert('Error', result.message);
+        Alert.alert('Error', translateErrorMessage(result.message || 'Gagal menambahkan produk'));
         return { success: false };
       }
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', translateErrorMessage(error.message || 'Gagal menambahkan produk'));
       return { success: false };
     } finally {
       setIsSubmitting(false);

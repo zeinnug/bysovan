@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { translateErrorMessage } from './sold';
 
 // ─── WARNA ───────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -299,7 +300,7 @@ const printReceipt = async (receiptData, onStatus) => {
       // User cancel - tidak perlu alert
       return false;
     }
-    Alert.alert('Gagal Mencetak', `${error.message || error}`, [{ text: 'OK' }]);
+    Alert.alert('Gagal Mencetak', translateErrorMessage(error.message || error), [{ text: 'OK' }]);
     return false;
   }
 };
@@ -327,7 +328,7 @@ const saveAsPDF = async (receiptData, onStatus) => {
     return true;
   } catch (error) {
     onStatus?.('');
-    Alert.alert('Gagal', `${error.message || error}`, [{ text: 'OK' }]);
+    Alert.alert('Gagal', translateErrorMessage(error.message || error), [{ text: 'OK' }]);
     return false;
   }
 };
