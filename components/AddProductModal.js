@@ -1,5 +1,5 @@
 // BYSOVAN/components/AddProductModal.js
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,26 +18,119 @@ import { Octicons } from '@expo/vector-icons';
 const AddProductModal = ({ 
   visible, 
   onClose, 
-  formData, 
-  onFormChange, 
   onSubmit, 
-  isSubmitting 
+  isSubmitting,
+  onProductCreated, // Callback untuk show QR setelah sukses
 }) => {
+  // Form State
+  const [brand, setBrand] = useState('');
+  const [model, setModel] = useState('');
+  const [color, setColor] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
+  const [discountPrice, setDiscountPrice] = useState('');
+  const [description, setDescription] = useState('');
   
-  // ✅ Fungsi Generate Barcode Otomatis
-  const handleGenerateBarcode = () => {
-    // Format: BYS + Timestamp + Random 4 digit
-    const timestamp = Date.now();
-    const random = Math.floor(1000 + Math.random() * 9000); // 4 digit random
-    const newBarcode = `BYS${timestamp}${random}`;
-    
-    onFormChange('barcode', newBarcode);
-    
-    Alert.alert(
-      'Barcode Generated!',
-      `Barcode berhasil dibuat: ${newBarcode}`,
-      [{ text: 'OK' }]
-    );
+  // Dynamic Sizes State
+  const [sizes, setSizes] = useState([
+    { id: Date.now(), size: '', stock: '' }
+  ]);
+
+  // Reset form ketika modal dibuka
+  useEffect(() => {
+    if (visible) {
+      resetForm();
+    }
+  }, [visible]);
+
+  const resetForm = () => {
+    setBrand('');
+    setModel('');
+    setColor('');
+    setSellingPrice('');
+    setDiscountPrice('');
+    setDescription('');
+    setSizes([{ id: Date.now(), size: '', stock: '' }]);
+  };
+
+  // Handle tambah ukuran baru
+  const handleAddSize = () => {
+    setSizes([...sizes, { id: Date.now(), size: '', stock: '' }]);
+  };
+
+  // Handle hapus ukuran
+  const handleRemoveSize = (id) => {
+    if (sizes.length > 1) {
+      setSizes(sizes.filter(s => s.id !== id));
+    } else {
+      Alert.alert('Info', 'Minimal harus ada 1 ukuran dan stok');
+    }
+  };
+
+  // Handle update size field
+  const handleUpdateSize = (id, field, value) => {
+    setSizes(sizes.map(s => 
+      s.id === id ? { ...s, [field]: value } : s
+    ));
+  };
+
+  // Validasi dan Submit
+  const handleSubmitProduct = async () => {
+    // Validasi required fields
+    if (!brand.trim()) {
+      Alert.alert('Validasi', 'Brand wajib diisi');
+      return;
+    }
+    if (!model.trim()) {
+      Alert.alert('Validasi', 'Model wajib diisi');
+      return;
+    }
+    if (!sellingPrice.trim()) {
+      Alert.alert('Validasi', 'Harga Jual wajib diisi');
+      return;
+    }
+
+    // Validasi ukuran dan stok
+    const validSizes = sizes.filter(s => s.size.trim() && s.stock.trim());
+    if (validSizes.length === 0) {
+      Alert.alert('Validasi', 'Minimal harus ada 1 ukuran dan stok yang terisi');
+      return;
+    }
+
+    // Format sizes untuk API
+    const formattedSizes = validSizes.map(s => ({
+      size: s.size.trim(),
+      stock: parseInt(s.stock) || 0
+    }));
+
+    // Prepare product data
+    const productData = {
+      brand: brand.trim(),
+      model: model.trim(),
+      color: color.trim() || '',
+      sizes: formattedSizes,
+      sellingPrice: parseFloat(sellingPrice) || 0,
+      discountPrice: discountPrice.trim() ? parseFloat(discountPrice) : null,
+      description: description.trim() || '',
+    };
+
+    console.log('📤 Submitting product:', productData);
+
+    // Call parent submit handler
+    try {
+      const result = await onSubmit(productData);
+      
+      if (result && result.success) {
+        // Callback untuk show QR modal dengan product baru
+        if (onProductCreated && result.data) {
+          onProductCreated(result.data);
+        }
+        
+        resetForm();
+        onClose();
+      }
+    } catch (error) {
+      console.error('❌ Submit error:', error);
+    }
   };
 
   return (
@@ -51,10 +144,10 @@ const AddProductModal = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.modalOverlay}
       >
-        <View style={styles.addModalContainer}>
+        <View style={styles.modalContainer}>
           {/* Header */}
-          <View style={styles.addModalHeader}>
-            <Text style={styles.addModalTitle}>Tambah Produk Baru</Text>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>TAMBAH PRODUK</Text>
             <TouchableOpacity onPress={onClose}>
               <Octicons name="x" size={24} color="#F5ECE4" />
             </TouchableOpacity>
@@ -62,209 +155,183 @@ const AddProductModal = ({
 
           {/* Form Content */}
           <ScrollView 
-            style={styles.addModalScroll}
+            style={styles.modalScroll}
             showsVerticalScrollIndicator={false}
           >
-            {/* Informasi Produk Card */}
+            {/* Informasi Produk */}
             <View style={styles.formSection}>
               <View style={styles.formSectionHeader}>
                 <Octicons name="package" size={20} color="#FC6A0A" />
-                <Text style={[styles.formSectionTitle, styles.orangeText]}>Informasi Produk</Text>
+                <Text style={styles.formSectionTitle}>Informasi Produk</Text>
               </View>
 
               <View style={styles.formRow}>
                 <View style={styles.formGroup}>
-                   <Text style={styles.formLabel}>Nama Produk</Text>
+                  <Text style={styles.formLabel}>Brand <Text style={styles.required}>*</Text></Text>
                   <TextInput
                     style={styles.formInput}
-                    value={formData.namaProduk}
-                    onChangeText={(text) => onFormChange('namaProduk', text)}
+                    placeholder="Contoh: Adidas Originals"
+                    placeholderTextColor="#999"
+                    value={brand}
+                    onChangeText={setBrand}
                   />
                 </View>
                 <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Harga Beli</Text>
+                  <Text style={styles.formLabel}>Model <Text style={styles.required}>*</Text></Text>
                   <TextInput
                     style={styles.formInput}
-                    keyboardType="numeric"
-                    value={formData.hargaBeli}
-                    onChangeText={(text) => onFormChange('hargaBeli', text)}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Merek</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={formData.merek}
-                    onChangeText={(text) => onFormChange('merek', text)}
-                  />
-                </View>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Harga Jual</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    keyboardType="numeric"
-                    value={formData.hargaJual}
-                    onChangeText={(text) => onFormChange('hargaJual', text)}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Kategori</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={formData.kategori}
-                    onChangeText={(text) => onFormChange('kategori', text)}
-                  />
-                </View>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Kode SKU</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={formData.kodeSKU}
-                    onChangeText={(text) => onFormChange('kodeSKU', text)}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* SIZE Card */}
-            <View style={styles.formSection}>
-              <View style={styles.formSectionHeader}>
-                <Octicons name="ruler" size={20} color="#FC6A0A" />
-                <Text style={[styles.formSectionTitle, styles.orangeText]}>SIZE</Text>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Ukuran</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={formData.ukuran}
-                    onChangeText={(text) => onFormChange('ukuran', text)}
-                  />
-                </View>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Warna</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={formData.warna}
-                    onChangeText={(text) => onFormChange('warna', text)}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formGroup}>
-                   <Text style={styles.formLabel}>Stok Awal</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    keyboardType="numeric"
-                    value={formData.stokAwal}
-                    onChangeText={(text) => onFormChange('stokAwal', text)}
-                  />
-                </View>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Minimum Stok</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    keyboardType="numeric"
-                    value={formData.minimumStok}
-                    onChangeText={(text) => onFormChange('minimumStok', text)}
+                    placeholder="Contoh: Superstar"
+                    placeholderTextColor="#999"
+                    value={model}
+                    onChangeText={setModel}
                   />
                 </View>
               </View>
 
               <View style={styles.formGroupFull}>
-                <Text style={styles.formLabel}>Supplier</Text>
+                <Text style={styles.formLabel}>Warna</Text>
                 <TextInput
                   style={styles.formInput}
-                  value={formData.supplier}
-                  onChangeText={(text) => onFormChange('supplier', text)}
+                  placeholder="Contoh: Putih"
+                  placeholderTextColor="#999"
+                  value={color}
+                  onChangeText={setColor}
                 />
               </View>
             </View>
 
-            {/* Deskripsi Produk Card */}
+            {/* Harga */}
             <View style={styles.formSection}>
               <View style={styles.formSectionHeader}>
+                <Octicons name="tag" size={20} color="#FC6A0A" />
+                <Text style={styles.formSectionTitle}>Harga</Text>
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Harga Jual <Text style={styles.required}>*</Text></Text>
+                  <View style={styles.priceInputContainer}>
+                    <Text style={styles.pricePrefix}>Rp</Text>
+                    <TextInput
+                      style={styles.priceInput}
+                      placeholder="1.234.567"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      value={sellingPrice}
+                      onChangeText={setSellingPrice}
+                    />
+                  </View>
+                </View>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Harga Diskon (Opsional)</Text>
+                  <View style={styles.priceInputContainer}>
+                    <Text style={styles.pricePrefix}>Rp</Text>
+                    <TextInput
+                      style={styles.priceInput}
+                      placeholder="1.234.567"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      value={discountPrice}
+                      onChangeText={setDiscountPrice}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.helperText}>
+                Harga diskon harus lebih kecil atau sama dengan harga jual.
+              </Text>
+            </View>
+
+            {/* Ukuran dan Stok - DYNAMIC */}
+            <View style={styles.formSection}>
+              <View style={styles.formSectionHeader}>
+                <Octicons name="inbox" size={20} color="#FC6A0A" />
+                <Text style={styles.formSectionTitle}>Ukuran dan Stok</Text>
+              </View>
+
+              {sizes.map((sizeItem, index) => (
+                <View key={sizeItem.id} style={styles.sizeRow}>
+                  <View style={styles.sizeInputGroup}>
+                    <Text style={styles.formLabel}>
+                      Ukuran (contoh: 41) {index === 0 && <Text style={styles.required}>*</Text>}
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      placeholder="Ukuran (contoh: 41)"
+                      placeholderTextColor="#999"
+                      value={sizeItem.size}
+                      onChangeText={(text) => handleUpdateSize(sizeItem.id, 'size', text)}
+                    />
+                  </View>
+
+                  <View style={styles.sizeInputGroup}>
+                    <Text style={styles.formLabel}>
+                      Jumlah Unit {index === 0 && <Text style={styles.required}>*</Text>}
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      placeholder="Jumlah Unit"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      value={sizeItem.stock}
+                      onChangeText={(text) => handleUpdateSize(sizeItem.id, 'stock', text)}
+                    />
+                  </View>
+
+                  {sizes.length > 1 && (
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => handleRemoveSize(sizeItem.id)}
+                    >
+                      <Text style={styles.removeButtonText}>Hapus</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+
+              <TouchableOpacity 
+                style={styles.addSizeButton}
+                onPress={handleAddSize}
+              >
+                <Octicons name="plus" size={18} color="#FFFFFF" />
+                <Text style={styles.addSizeButtonText}>Tambah Ukuran</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Deskripsi Produk */}
+            <View style={styles.formSection}>
+              <View style={styles.formSectionHeader}>
+                <Octicons name="note" size={20} color="#FC6A0A" />
                 <Text style={styles.formSectionTitle}>Deskripsi Produk</Text>
               </View>
               <TextInput
                 style={[styles.formInput, styles.textArea]}
-                placeholder="Masukkan deskripsi produk..."
-                placeholderTextColor="#585757"
+                placeholder="Masukkan deskripsi produk (opsional)..."
+                placeholderTextColor="#999"
                 multiline
                 numberOfLines={4}
-                value={formData.deskripsi}
-                onChangeText={(text) => onFormChange('deskripsi', text)}
+                value={description}
+                onChangeText={setDescription}
               />
-            </View>
-
-            {/* ✅ Barcode Card - UPDATED dengan Tombol Generate */}
-            <View style={styles.formSection}>
-              <View style={styles.formSectionHeader}>
-                <Octicons name="code" size={20} color="#FC6A0A" />
-                <Text style={[styles.formSectionTitle, styles.orangeText]}>Barcode</Text>
-              </View>
-              
-              {/* Input Barcode */}
-              <TextInput
-                style={styles.formInput}
-                placeholder="Masukkan barcode manual atau generate otomatis"
-                placeholderTextColor="#999"
-                value={formData.barcode}
-                onChangeText={(text) => onFormChange('barcode', text)}
-                editable={true}
-              />
-
-              {/* Tombol Generate Barcode */}
-              <TouchableOpacity 
-                style={styles.generateButton}
-                onPress={handleGenerateBarcode}
-                activeOpacity={0.7}
-              >
-                <Octicons name="zap" size={18} color="#FFFFFF" />
-                <Text style={styles.generateButtonText}>Generate Barcode Otomatis</Text>
-              </TouchableOpacity>
-
-              {/* Info Box */}
-              {formData.barcode ? (
-                <View style={styles.barcodeInfoBox}>
-                  <Octicons name="check-circle" size={16} color="#28a745" />
-                  <Text style={styles.barcodeInfoText}>
-                    Barcode siap: {formData.barcode}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.barcodeInfoBox}>
-                  <Octicons name="info" size={16} color="#585757" />
-                  <Text style={styles.barcodeInfoText}>
-                    Klik tombol di atas untuk generate barcode otomatis
-                  </Text>
-                </View>
-              )}
             </View>
 
             <View style={{ height: 20 }} />
           </ScrollView>
 
           {/* Footer */}
-          <View style={styles.addModalFooter}>
+          <View style={styles.modalFooter}>
             <TouchableOpacity 
               style={styles.cancelButton}
               onPress={onClose}
+              disabled={isSubmitting}
             >
-              <Text style={styles.buttonText}>Batal</Text>
+              <Text style={styles.buttonText}>Kembali</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-              onPress={onSubmit}
+              onPress={handleSubmitProduct}
               disabled={isSubmitting}
               activeOpacity={0.8}
             >
@@ -273,7 +340,7 @@ const AddProductModal = ({
               ) : (
                 <>
                   <Octicons name="check" size={20} color="#FFFFFF" />
-                  <Text style={styles.buttonText}>Simpan Produk</Text>
+                  <Text style={styles.buttonText}>Simpan</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -285,23 +352,20 @@ const AddProductModal = ({
 };
 
 const styles = StyleSheet.create({
-  // Modal container and overlay
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  addModalContainer: {
+  modalContainer: {
     width: '95%',
     maxHeight: '90%',
     backgroundColor: '#F5ECE4',
     borderRadius: 16,
     overflow: 'hidden',
   },
-
-  // Header
-  addModalHeader: {
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -309,19 +373,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
-  addModalTitle: {
+  modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#F5ECE4',
   },
-
-  // Scrollable Form Area
-  addModalScroll: {
+  modalScroll: {
     paddingHorizontal: 12,
     paddingTop: 16,
   },
-
-  // Form Section Cards
   formSection: {
     backgroundColor: '#292929',
     borderRadius: 12,
@@ -339,13 +399,8 @@ const styles = StyleSheet.create({
   formSectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#F5ECE4',
-  },
-  orangeText: {
     color: '#FC6A0A',
   },
-
-  // Form Layout & Elements
   formRow: {
     flexDirection: 'row',
     gap: 12,
@@ -355,13 +410,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   formGroupFull: {
-    // No extra styles needed
+    marginBottom: 12,
   },
   formLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#F5ECE4',
     marginBottom: 8,
+  },
+  required: {
+    color: '#FC6A0A',
   },
   formInput: {
     backgroundColor: '#F5ECE4',
@@ -377,48 +435,83 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
-
-  // ✅ NEW: Generate Barcode Button Styles
-  generateButton: {
+  priceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5ECE4',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#585757',
+    paddingLeft: 12,
+  },
+  pricePrefix: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#585757',
+    marginRight: 4,
+  },
+  priceInput: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#292929',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  // Dynamic Size Rows
+  sizeRow: {
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#585757',
+  },
+  sizeInputGroup: {
+    marginBottom: 8,
+  },
+  removeButton: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#E74504',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  removeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  addSizeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FC6A0A',
+    backgroundColor: '#28a745',
     paddingVertical: 12,
-    paddingHorizontal: 16,
     borderRadius: 8,
-    marginTop: 12,
     gap: 8,
-    borderWidth: 2,
-    borderColor: '#E74504',
+    marginTop: 8,
   },
-  generateButtonText: {
+  addSizeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+    marginTop: 8,
+  },
+  addSizeButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: 'bold',
   },
-
-  // ✅ NEW: Barcode Info Box
-  barcodeInfoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5ECE4',
-    padding: 10,
-    borderRadius: 6,
-    marginTop: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#585757',
-  },
-  barcodeInfoText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#585757',
-    fontWeight: '500',
-  },
-
-  // Footer & Buttons
-  addModalFooter: {
+  modalFooter: {
     flexDirection: 'row',
     gap: 12,
     padding: 12,
@@ -446,6 +539,7 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: {
     backgroundColor: '#E74504',
+    opacity: 0.7,
   },
   buttonText: {
     color: '#FFFFFF',
