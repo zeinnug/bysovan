@@ -3,19 +3,47 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Octicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { View, ActivityIndicator, StyleSheet, Text } from "react-native";
 
-// Import screen yang sudah dibuat
-import HomeScreen from "./pages/HomeScreen";
-import ProfileScreen from "./pages/ProfileScreen";
-import InventoryScreen from "./pages/InventoryScreen";
-import TransactionScreen from "./pages/TransactionScreen";
-import SalesReportScreen from "./pages/SalesReportScreen"; // BARU - Import SalesReportScreen
-import NewTransactionScreen from "./pages/NewTransactionScreen"; // NEW - Import NewTransactionScreen
-import Login from "./pages/Login";
+// Import Auth Service
+import { 
+  isAuthenticated, 
+  getLocalUserData, 
+  getUserRole,
+  logoutUser 
+} from "./login auth/authService";
+
+// Import Auth Screens
+import Login from "./pages/Login.js";
+import ForgotPassword from "./pages/ForgotPassword.js";
+import ChangePassword from "./pages/ChangePassword.js";
+import EmailVerification from "./pages/EmailVerification.js";
+
+// Import Main App Screens
+import HomeScreen from "./pages/HomeScreen.js";
+import ProfileScreen from "./pages/ProfileScreen.js";
+import InventoryScreen from "./pages/InventoryScreen.js";
+import TransactionScreen from "./pages/TransactionScreen.js";
+import SalesReportScreen from "./pages/SalesReportScreen.js";
+import NewTransactionScreen from "./pages/NewTransactionScreen.js";
+import StockOpnameScreen from "./pages/Stockopnamescreen.js";
 
 const Stack = createNativeStackNavigator();
 const BottomTab = createBottomTabNavigator();
+
+// ====== LOADING SCREEN ======
+function LoadingScreen() {
+  return (
+    <View style={styles.loadingContainer}>
+      <View style={styles.logoCircle}>
+        <Octicons name="package" size={48} color="#FFFFFF" />
+      </View>
+      <Text style={styles.brandName}>SepatuBySovan</Text>
+      <ActivityIndicator size="large" color="#FC6A0A" style={styles.loader} />
+      <Text style={styles.loadingText}>Memuat aplikasi...</Text>
+    </View>
+  );
+}
 
 // ====== BOTTOM TAB (Main App setelah login) ======
 function MainTabs({ userData, onLogout }) {
@@ -96,56 +124,86 @@ function MainTabs({ userData, onLogout }) {
 // ====== APP.JS ======
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [userToken, setUserToken] = useState(null);
+  const [isAuthenticatedState, setIsAuthenticatedState] = useState(false);
   const [userData, setUserData] = useState(null);
 
-  // Cek token di AsyncStorage saat pertama kali app dijalankan
+  // Cek status autentikasi saat app pertama kali dijalankan
   useEffect(() => {
-    const checkLogin = async () => {
-      try {
-        const token = await AsyncStorage.getItem("userToken");
-        const user = await AsyncStorage.getItem("userData");
-
-        if (token) {
-          setUserToken(token);
-          if (user) setUserData(JSON.parse(user));
-        }
-      } catch (error) {
-        console.log("Error checking token:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkLogin();
+    checkAuthStatus();
   }, []);
 
-  // Saat login sukses
-  const handleLoginSuccess = (data) => {
-    setUserToken(data.token);
-    setUserData(data.user);
-  };
-
-  // Saat logout
-  const handleLogout = async () => {
+  const checkAuthStatus = async () => {
     try {
-      await AsyncStorage.removeItem("userToken");
-      await AsyncStorage.removeItem("userData");
-      setUserToken(null);
-      setUserData(null);
+      // Cek apakah user sudah login
+      const isLoggedIn = await isAuthenticated();
+      
+      if (isLoggedIn) {
+        // Ambil data user dari local storage
+        const user = await getLocalUserData();
+        const role = await getUserRole();
+        
+        if (user) {
+          setUserData({ ...user, role });
+          setIsAuthenticatedState(true);
+        } else {
+          setIsAuthenticatedState(false);
+        }
+      } else {
+        setIsAuthenticatedState(false);
+      }
     } catch (error) {
-      console.log("Error during logout:", error);
+      console.error("Error checking auth status:", error);
+      setIsAuthenticatedState(false);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Handle login sukses
+  const handleLoginSuccess = async (data) => {
+    try {
+      setIsAuthenticatedState(true);
+      setUserData(data.user);
+    } catch (error) {
+      console.error("Error handling login success:", error);
+    }
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await logoutUser(); // Ini akan clear AsyncStorage & logout dari server
+      setIsAuthenticatedState(false);
+      setUserData(null);
+    } catch (error) {
+      console.error("Error during logout:", error);
+      // Tetap logout meskipun ada error
+      setIsAuthenticatedState(false);
+      setUserData(null);
+    }
+  };
+
+  // Handle email verification success
+  const handleVerificationSuccess = () => {
+    // Update user data setelah verifikasi
+    if (userData) {
+      setUserData({
+        ...userData,
+        email_verified_at: new Date().toISOString()
+      });
+    }
+  };
+
+  // Show loading screen
   if (isLoading) {
-    return null; // Bisa diganti splash screen atau ActivityIndicator
+    return <LoadingScreen />;
   }
 
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {userToken ? (
+        {isAuthenticatedState ? (
+          // ===== AUTHENTICATED ROUTES =====
           <>
             {/* Main App dengan Bottom Tab */}
             <Stack.Screen name="MainApp">
@@ -158,7 +216,7 @@ export default function App() {
               )}
             </Stack.Screen>
             
-            {/* SalesReport Screen - Stack Screen untuk navigasi dari TransactionScreen */}
+            {/* SalesReport Screen */}
             <Stack.Screen 
               name="SalesReport" 
               component={SalesReportScreen}
@@ -168,7 +226,7 @@ export default function App() {
               }}
             />
 
-            {/* NewTransaction Screen - dapat dinavigasi dari TransactionScreen */}
+            {/* NewTransaction Screen */}
             <Stack.Screen
               name="NewTransaction"
               component={NewTransactionScreen}
@@ -177,15 +235,92 @@ export default function App() {
                 presentation: 'card',
               }}
             />
+
+            {/* Stock Opname Screen */}
+            <Stack.Screen 
+              name="StockOpname" 
+              component={StockOpnameScreen}
+              options={{ headerShown: false }}
+            />
+
+            {/* Change Password Screen */}
+            <Stack.Screen
+              name="ChangePassword"
+              component={ChangePassword}
+              options={{
+                headerShown: false,
+                presentation: 'card',
+              }}
+            />
+
+            {/* Email Verification Screen */}
+            <Stack.Screen name="EmailVerification">
+              {(props) => (
+                <EmailVerification
+                  {...props}
+                  onVerificationSuccess={handleVerificationSuccess}
+                />
+              )}
+            </Stack.Screen>
           </>
         ) : (
-          <Stack.Screen name="Login">
-            {(props) => (
-              <Login {...props} onLoginSuccess={handleLoginSuccess} />
-            )}
-          </Stack.Screen>
+          // ===== GUEST ROUTES (Not Authenticated) =====
+          <>
+            {/* Login Screen */}
+            <Stack.Screen name="Login">
+              {(props) => (
+                <Login 
+                  {...props} 
+                  onLoginSuccess={handleLoginSuccess} 
+                />
+              )}
+            </Stack.Screen>
+
+            {/* Forgot Password Screen */}
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPassword}
+              options={{
+                headerShown: false,
+                presentation: 'card',
+              }}
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
+
+// ====== STYLES ======
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#F5ECE4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  logoCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#FC6A0A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  brandName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#292929',
+    marginBottom: 32,
+  },
+  loader: {
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#585757',
+  },
+});

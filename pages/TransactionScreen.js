@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,38 +7,60 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
-  TextInput,
   ScrollView,
   Alert,
   Dimensions,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import {
-  getTransactions,
-  createTransaction,
-  filterTransactions,
-} from '../keduitan/transactions';
+import { filterTransactions } from '../data/services/transactionService';
 
 const { width } = Dimensions.get('window');
 
-// Color Palette
+//colors
 const COLORS = {
-  jet: '#292929',
-  davysGray: '#585757',
-  linen: '#F5ECE4',
+  jet: '#1A1A1A',
+  jetLight: '#2C2C2C',
+  davysGray: '#6B6B6B',
+  linen: '#F7F1EB',
+  linenDark: '#EDE3D9',
   pumpkin: '#FC6A0A',
+  pumpkinLight: '#FD8A3C',
+  pumpkinDim: '#FC6A0A18',
   goldenGate: '#E74504',
   white: '#FFFFFF',
+  success: '#10B981',
+  successDim: '#10B98115',
+  cardBg: '#FFFFFF',
+  border: '#F0E8E0',
+};
+
+const PAYMENT_COLORS = {
+  cash:     { bg: '#FFF3E0', text: '#E65100', dot: '#FF6D00' },
+  qris:     { bg: '#E8F5E9', text: '#1B5E20', dot: '#2E7D32' },
+  transfer: { bg: '#E3F2FD', text: '#0D47A1', dot: '#1565C0' },
+  debit:    { bg: '#F3E5F5', text: '#4A148C', dot: '#6A1B9A' },
+  default:  { bg: '#F5F5F5', text: '#424242', dot: '#616161' },
+};
+
+const getPaymentColor = (method) => {
+  const m = (method || '').toLowerCase();
+  if (m === 'cash') return PAYMENT_COLORS.cash;
+  if (m === 'qris') return PAYMENT_COLORS.qris;
+  if (m.includes('transfer')) return PAYMENT_COLORS.transfer;
+  if (m === 'debit') return PAYMENT_COLORS.debit;
+  return PAYMENT_COLORS.default;
 };
 
 export default function TransactionScreen({ navigation }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activePaymentFilter, setActivePaymentFilter] = useState('');
+  const [activeStatusFilter, setActiveStatusFilter] = useState('');
 
-  // Helper function untuk format tanggal ke YYYY-MM-DD
   const formatDateToYYYYMMDD = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -46,58 +68,38 @@ export default function TransactionScreen({ navigation }) {
     return `${year}-${month}-${day}`;
   };
 
-  // Filter states - default tanggal hari ini
-  const [filterData, setFilterData] = useState({
-    date: formatDateToYYYYMMDD(new Date()),
-    payment_method: '',
-    status: '',
-  });
+  const todayStr = formatDateToYYYYMMDD(new Date());
 
-  // Load transactions on screen focus
   useFocusEffect(
     useCallback(() => {
-      loadTransactionsWithFilter();
+      setActivePaymentFilter('');
+      setActiveStatusFilter('');
+      loadTransactionsWithFilter({ date: todayStr, payment_method: '', status: '' });
     }, [])
   );
 
-  const loadTransactionsWithFilter = async () => {
+  const loadTransactionsWithFilter = async (customFilter) => {
     try {
       setLoading(true);
-      
-      console.log('Filter data:', filterData);
-      
-      // Selalu gunakan filter dengan tanggal hari ini
       const result = await filterTransactions({
-        date: filterData.date,
-        payment_method: filterData.payment_method || undefined,
-        status: filterData.status || undefined,
+        date: customFilter?.date || todayStr,
+        payment_method: customFilter?.payment_method || undefined,
+        status: customFilter?.status || undefined,
       });
-      
-      console.log('Filter result:', result);
-      
+
       if (result.success) {
-        // Pastikan data adalah array
-        let transactionData = [];
-        
-        if (Array.isArray(result.data)) {
-          transactionData = result.data;
-        } else if (result.data && Array.isArray(result.data.transactions)) {
-          transactionData = result.data.transactions;
-        } else if (result.data && typeof result.data === 'object') {
-          transactionData = Object.values(result.data).filter(item => 
-            item && typeof item === 'object' && (item.id || item.transaction_id)
-          );
-        }
-        
-        console.log('Transaction count:', transactionData.length);
+        const transactionData =
+          result.data?.data?.transactions && Array.isArray(result.data.data.transactions)
+            ? result.data.data.transactions
+            : Array.isArray(result.data) ? result.data
+            : result.data?.transactions ? result.data.transactions
+            : [];
         setTransactions(transactionData);
       } else {
-        console.error('Error from API:', result.error);
         setTransactions([]);
         Alert.alert('Error', result.error || 'Gagal memuat transaksi');
       }
     } catch (error) {
-      console.error('Exception in loadTransactionsWithFilter:', error);
       setTransactions([]);
       Alert.alert('Error', 'Terjadi kesalahan saat memuat transaksi');
     } finally {
@@ -105,642 +107,580 @@ export default function TransactionScreen({ navigation }) {
     }
   };
 
+  const handlePaymentFilter = (value) => {
+    const newVal = activePaymentFilter === value ? '' : value;
+    setActivePaymentFilter(newVal);
+    loadTransactionsWithFilter({ date: todayStr, payment_method: newVal, status: activeStatusFilter });
+  };
+
+  const handleStatusFilter = (value) => {
+    const newVal = activeStatusFilter === value ? '' : value;
+    setActiveStatusFilter(newVal);
+    loadTransactionsWithFilter({ date: todayStr, payment_method: activePaymentFilter, status: newVal });
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadTransactionsWithFilter();
+    await loadTransactionsWithFilter({ date: todayStr, payment_method: activePaymentFilter, status: activeStatusFilter });
     setRefreshing(false);
-  };
-
-  const handleFilter = async () => {
-    await loadTransactionsWithFilter();
-  };
-
-  const resetFilter = () => {
-    setFilterData({
-      date: formatDateToYYYYMMDD(new Date()),
-      payment_method: '',
-      status: '',
-    });
-    setTimeout(() => {
-      loadTransactionsWithFilter();
-    }, 100);
   };
 
   const formatCurrency = (amount) => {
     try {
-      return new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-      }).format(amount || 0);
-    } catch (error) {
+      return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount || 0);
+    } catch {
       return `Rp ${(amount || 0).toLocaleString('id-ID')}`;
     }
   };
 
-  const formatDate = (dateString) => {
+  const formatTime = (dateString) => {
     if (!dateString) return '-';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('id-ID', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch (error) {
-      return dateString;
-    }
+    return new Date(dateString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const formatDisplayDate = (dateString) => {
-    if (!dateString) return '-';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      });
-    } catch (error) {
-      return dateString;
-    }
+  const formatDisplayDate = () => {
+    return new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  // Hitung total dengan aman
   const calculateTotal = () => {
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      return 0;
-    }
-    
-    return transactions.reduce((sum, t) => {
-      const amount = t.final_amount || t.total || t.price || 0;
-      return sum + (typeof amount === 'number' ? amount : 0);
-    }, 0);
+    if (!Array.isArray(transactions)) return 0;
+    return transactions.reduce((sum, t) => sum + (t.final_amount || t.total || 0), 0);
   };
 
-  const renderTransactionCard = ({ item }) => {
+  const paidCount = transactions.filter(t => t.payment_status === 'paid').length;
+
+  const renderTransactionCard = ({ item, index }) => {
     if (!item) return null;
-    
+    const payColor = getPaymentColor(item.payment_method);
+    const isPaid = item.payment_status === 'paid';
+    const itemCount = item.items?.length || 0;
+
     return (
       <View style={styles.transactionCard}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>
-            {item.invoice_number || 'Kode pembayaran'}
-          </Text>
-          <View style={styles.statusBadge}>
-            <View
-              style={[
-                styles.statusDot,
-                item.payment_status === 'paid'
-                  ? { backgroundColor: '#10B981' }
-                  : { backgroundColor: COLORS.davysGray },
-              ]}
-            />
-            <Text style={styles.statusText}>
-              {item.payment_status === 'paid' ? 'Lunas' : 'Pending'}
+        {/* Top Row */}
+        <View style={styles.cardTop}>
+          <View style={styles.cardIndexBadge}>
+            <Text style={styles.cardIndexText}>{String(index + 1).padStart(2, '0')}</Text>
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.invoiceText} numberOfLines={1}>
+              {item.invoice_number || `TRX-${item.id}`}
+            </Text>
+            <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
+          </View>
+          <View style={[styles.statusPill, { backgroundColor: isPaid ? COLORS.successDim : '#FFF3E0' }]}>
+            <View style={[styles.statusDot, { backgroundColor: isPaid ? COLORS.success : '#FF6D00' }]} />
+            <Text style={[styles.statusPillText, { color: isPaid ? COLORS.success : '#E65100' }]}>
+              {isPaid ? 'Lunas' : 'Pending'}
             </Text>
           </View>
         </View>
-        
-        <View style={styles.cardBody}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Customer:</Text>
-            <Text style={styles.infoValue}>
-              {item.customer_name || '-'}
+
+        <View style={styles.cardDivider} />
+
+        {/* Info Grid */}
+        <View style={styles.cardGrid}>
+          <View style={styles.cardGridItem}>
+            <Text style={styles.gridLabel}>Customer</Text>
+            <Text style={styles.gridValue} numberOfLines={1}>
+              {item.customer_name || 'Umum'}
             </Text>
           </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Produk:</Text>
-            <Text style={styles.infoValue}>
-              {item.items && Array.isArray(item.items) && item.items.length > 0
-                ? `${item.items.length} item${item.items.length > 1 ? 's' : ''}`
-                : item.product_name || item.products || '-'}
+          <View style={styles.cardGridItem}>
+            <Text style={styles.gridLabel}>Produk</Text>
+            <Text style={styles.gridValue}>
+              {itemCount > 0 ? `${itemCount} item` : '-'}
             </Text>
           </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Metode:</Text>
-            <Text style={styles.infoValue}>
-              {item.payment_method || 'Cash'}
+        </View>
+
+        {/* Bottom Row */}
+        <View style={styles.cardBottom}>
+          <View style={[styles.paymentChip, { backgroundColor: payColor.bg }]}>
+            <View style={[styles.paymentDot, { backgroundColor: payColor.dot }]} />
+            <Text style={[styles.paymentChipText, { color: payColor.text }]}>
+              {(item.payment_method || 'Cash').toUpperCase()}
             </Text>
           </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Total:</Text>
-            <Text style={[styles.infoValue, styles.totalAmount]}>
-              {formatCurrency(item.final_amount || item.total || item.price || 0)}
-            </Text>
-          </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Waktu:</Text>
-            <Text style={styles.infoValue}>
-              {formatDate(item.created_at || item.date)}
-            </Text>
-          </View>
+          <Text style={styles.amountText}>
+            {formatCurrency(item.final_amount || item.total || 0)}
+          </Text>
         </View>
       </View>
     );
   };
 
+  const paymentFilters = [
+    { label: 'Semua', value: '' },
+    { label: 'Cash', value: 'cash' },
+    { label: 'QRIS', value: 'qris' },
+    { label: 'Transfer', value: 'transfer' },
+    { label: 'Debit', value: 'debit' },
+  ];
+
+  const statusFilters = [
+    { label: 'Semua', value: '' },
+    { label: 'Lunas', value: 'paid' },
+    { label: 'Pending', value: 'unpaid' },
+  ];
+
   return (
-    <View style={styles.container}>
-      <ScrollView
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.pumpkin]}
-          />
-        }
-      >
-        {/* Header */}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.jet} />
+      <View style={styles.container}>
+
+        {/* ===== HEADER ===== */}
         <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={styles.logoContainer}>
-              <Ionicons name="receipt-outline" size={28} color={COLORS.white} />
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.brandName}>@SEPATUBYSOVAN</Text>
+              <Text style={styles.headerDate}>{formatDisplayDate()}</Text>
             </View>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={20} color={COLORS.white} />
-              <Text style={styles.backButtonText}>Kembali</Text>
+            <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh} disabled={loading}>
+              {loading
+                ? <ActivityIndicator size="small" color={COLORS.pumpkin} />
+                : <Ionicons name="refresh-outline" size={20} color={COLORS.pumpkin} />
+              }
             </TouchableOpacity>
           </View>
-          
-          <Text style={styles.headerTitle}>@SEPATUBYSOVAN</Text>
-          <Text style={styles.headerSubtitle}>Transaksi Hari Ini</Text>
-          <Text style={styles.headerDate}>
-            {formatDisplayDate(filterData.date)}
-          </Text>
-          
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('NewTransaction')}
-            >
-              <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
-              <Text style={styles.actionButtonText}>Transaksi Baru</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('SalesReport')}
-            >
-              <Ionicons name="stats-chart-outline" size={20} color={COLORS.white} />
-              <Text style={styles.actionButtonText}>Laporan</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
 
-        {/* Filter Section */}
-        <View style={styles.filterSection}>
-          <View style={styles.filterHeader}>
-            <Text style={styles.sectionTitle}>Filter Transaksi</Text>
-            <Text style={styles.filterInfo}>
-              Menampilkan transaksi: {formatDisplayDate(filterData.date)}
-            </Text>
-          </View>
-          
-          <View style={styles.filterGrid}>
-            <View style={styles.filterItem}>
-              <Text style={styles.filterLabel}>Tanggal</Text>
-              <TextInput
-                style={styles.filterInput}
-                value={filterData.date}
-                onChangeText={(text) =>
-                  setFilterData({ ...filterData, date: text })
-                }
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.davysGray}
-              />
+          {/* Stats */}
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{transactions.length}</Text>
+              <Text style={styles.statLabel}>Transaksi</Text>
             </View>
-            
-            <View style={styles.filterItem}>
-              <Text style={styles.filterLabel}>Metode Pembayaran</Text>
-              <TextInput
-                style={styles.filterInput}
-                value={filterData.payment_method}
-                onChangeText={(text) =>
-                  setFilterData({ ...filterData, payment_method: text })
-                }
-                placeholder="cash, qris, Transfer Bank"
-                placeholderTextColor={COLORS.davysGray}
-              />
-            </View>
-            
-            <View style={styles.filterItem}>
-              <Text style={styles.filterLabel}>Status</Text>
-              <TextInput
-                style={styles.filterInput}
-                value={filterData.status}
-                onChangeText={(text) =>
-                  setFilterData({ ...filterData, status: text })
-                }
-                placeholder="paid, unpaid"
-                placeholderTextColor={COLORS.davysGray}
-              />
-            </View>
-          </View>
-          
-          <View style={styles.filterActions}>
-            <TouchableOpacity
-              style={styles.applyButton}
-              onPress={handleFilter}
-            >
-              <Ionicons name="filter" size={18} color={COLORS.white} />
-              <Text style={styles.applyButtonText}>Terapkan Filter</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.resetButton}
-              onPress={resetFilter}
-            >
-              <Ionicons name="refresh" size={18} color={COLORS.white} />
-              <Text style={styles.resetButtonText}>Reset ke Hari Ini</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Summary Card */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryItem}>
-            <Ionicons name="calendar-outline" size={24} color={COLORS.pumpkin} />
-            <View style={styles.summaryTextContainer}>
-              <Text style={styles.summaryLabel}>Total Transaksi</Text>
-              <Text style={styles.summaryValue}>
-                {Array.isArray(transactions) ? transactions.length : 0}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.summaryDivider} />
-          
-          <View style={styles.summaryItem}>
-            <Ionicons name="cash-outline" size={24} color={COLORS.pumpkin} />
-            <View style={styles.summaryTextContainer}>
-              <Text style={styles.summaryLabel}>Total Pendapatan</Text>
-              <Text style={styles.summaryValue}>
+            <View style={[styles.statCard, styles.statCardHighlight]}>
+              <Text style={[styles.statValue, styles.statValueHighlight]}>
                 {formatCurrency(calculateTotal())}
               </Text>
+              <Text style={[styles.statLabel, { color: COLORS.pumpkinLight }]}>Total Pendapatan</Text>
             </View>
+            <View style={styles.statCard}>
+              <Text style={[styles.statValue, { color: COLORS.success }]}>{paidCount}</Text>
+              <Text style={styles.statLabel}>Lunas</Text>
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('NewTransaction')}>
+              <Ionicons name="add" size={18} color={COLORS.white} />
+              <Text style={styles.actionBtnText}>Transaksi Baru</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnOutline]} onPress={() => navigation.navigate('SalesReport')}>
+              <Ionicons name="bar-chart-outline" size={18} color={COLORS.pumpkin} />
+              <Text style={[styles.actionBtnText, { color: COLORS.pumpkin }]}>Laporan</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Transaction Cards */}
-        {loading && (!Array.isArray(transactions) || transactions.length === 0) ? (
-          <View style={styles.loadingContainer}>
+        {/* ===== FILTER CHIPS ===== */}
+        <View style={styles.filterSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            <Text style={styles.filterSectionLabel}>Bayar:</Text>
+            {paymentFilters.map((f) => {
+              const isActive = activePaymentFilter === f.value;
+              return (
+                <TouchableOpacity
+                  key={`pay-${f.value}`}
+                  style={[styles.filterChip, isActive && styles.filterChipActive]}
+                  onPress={() => handlePaymentFilter(f.value)}
+                >
+                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={styles.filterSeparator} />
+            <Text style={styles.filterSectionLabel}>Status:</Text>
+            {statusFilters.map((f) => {
+              const isActive = activeStatusFilter === f.value;
+              return (
+                <TouchableOpacity
+                  key={`status-${f.value}`}
+                  style={[styles.filterChip, isActive && styles.filterChipActive]}
+                  onPress={() => handleStatusFilter(f.value)}
+                >
+                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* ===== CONTENT ===== */}
+        {loading && transactions.length === 0 ? (
+          <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={COLORS.pumpkin} />
             <Text style={styles.loadingText}>Memuat transaksi...</Text>
           </View>
-        ) : !Array.isArray(transactions) || transactions.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="receipt-outline" size={64} color={COLORS.davysGray} />
-            <Text style={styles.emptyText}>Belum ada transaksi hari ini</Text>
-            <Text style={styles.emptySubtext}>
-              Transaksi yang dibuat hari ini akan muncul di sini
-            </Text>
+        ) : transactions.length === 0 ? (
+          <View style={styles.centerContainer}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="receipt-outline" size={40} color={COLORS.pumpkin} />
+            </View>
+            <Text style={styles.emptyTitle}>Belum ada transaksi</Text>
+            <Text style={styles.emptySubtitle}>Transaksi hari ini akan muncul di sini</Text>
+            <TouchableOpacity style={styles.newTransactionBtn} onPress={() => navigation.navigate('NewTransaction')}>
+              <Ionicons name="add" size={18} color={COLORS.white} />
+              <Text style={styles.newTransactionBtnText}>Buat Transaksi</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.cardsContainer}>
-            <Text style={styles.cardsTitle}>
-              Daftar Transaksi ({transactions.length})
-            </Text>
-            <FlatList
-              data={transactions}
-              renderItem={renderTransactionCard}
-              keyExtractor={(item, index) =>
-                item?.id?.toString() || item?.transaction_id?.toString() || index.toString()
-              }
-              numColumns={width > 768 ? 3 : 1}
-              key={width > 768 ? 'grid' : 'list'}
-              scrollEnabled={false}
-              columnWrapperStyle={width > 768 ? styles.cardRow : null}
-            />
-          </View>
+          <FlatList
+            data={transactions}
+            renderItem={renderTransactionCard}
+            keyExtractor={(item, index) =>
+              item?.id?.toString() || item?.transaction_id?.toString() || index.toString()
+            }
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.pumpkin]} tintColor={COLORS.pumpkin} />
+            }
+            ListHeaderComponent={
+              <Text style={styles.listHeader}>{transactions.length} transaksi ditemukan</Text>
+            }
+          />
         )}
-      </ScrollView>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.jet,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.linen,
   },
+
+  // Header
   header: {
     backgroundColor: COLORS.jet,
-    paddingTop: 50,
-    paddingBottom: 30,
     paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  headerTop: {
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
-  logoContainer: {
-    width: 50,
-    height: 50,
-    backgroundColor: COLORS.pumpkin,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.pumpkin,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  backButtonText: {
+  brandName: {
+    fontSize: 22,
+    fontWeight: '800',
     color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: COLORS.white,
-    marginBottom: 5,
-  },
-  headerSubtitle: {
-    fontSize: 18,
-    color: COLORS.white,
-    marginBottom: 5,
+    letterSpacing: 0.5,
   },
   headerDate: {
-    fontSize: 16,
-    color: COLORS.pumpkin,
-    fontWeight: '600',
-    marginBottom: 20,
+    fontSize: 12,
+    color: COLORS.davysGray,
+    marginTop: 3,
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 15,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+  refreshBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.jetLight,
     justifyContent: 'center',
-    backgroundColor: COLORS.pumpkin,
-    paddingVertical: 15,
-    borderRadius: 8,
-    gap: 8,
+    alignItems: 'center',
   },
-  actionButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  filterSection: {
-    backgroundColor: COLORS.jet,
-    margin: 20,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  filterHeader: {
-    marginBottom: 15,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.white,
-    marginBottom: 5,
-  },
-  filterInfo: {
-    fontSize: 14,
-    color: COLORS.pumpkin,
-    fontWeight: '500',
-  },
-  filterGrid: {
-    gap: 15,
-  },
-  filterItem: {
-    marginBottom: 10,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.white,
-    marginBottom: 8,
-  },
-  filterInput: {
-    backgroundColor: COLORS.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.jet,
-    borderWidth: 1,
-    borderColor: COLORS.pumpkin + '30',
-  },
-  filterActions: {
+
+  // Stats
+  statsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 15,
+    marginBottom: 16,
   },
-  applyButton: {
+  statCard: {
     flex: 1,
-    backgroundColor: COLORS.pumpkin,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  applyButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  resetButton: {
-    flex: 1,
-    backgroundColor: COLORS.goldenGate,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  resetButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  summaryCard: {
-    backgroundColor: COLORS.white,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    padding: 20,
+    backgroundColor: COLORS.jetLight,
     borderRadius: 12,
-    flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  summaryItem: {
-    flex: 1,
-    flexDirection: 'row',
+    padding: 12,
     alignItems: 'center',
-    gap: 12,
   },
-  summaryTextContainer: {
-    flex: 1,
+  statCardHighlight: {
+    flex: 2,
+    backgroundColor: '#FC6A0A12',
+    borderWidth: 1,
+    borderColor: '#FC6A0A25',
   },
-  summaryLabel: {
-    fontSize: 12,
+  statValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.white,
+    marginBottom: 2,
+  },
+  statValueHighlight: {
+    color: COLORS.pumpkin,
+    fontSize: 13,
+  },
+  statLabel: {
+    fontSize: 11,
     color: COLORS.davysGray,
-    marginBottom: 4,
+    fontWeight: '500',
   },
-  summaryValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.jet,
+
+  // Action buttons
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: COLORS.linen,
-    marginHorizontal: 15,
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.pumpkin,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
   },
-  cardsContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+  actionBtnOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: COLORS.pumpkin,
   },
-  cardsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.jet,
-    marginBottom: 15,
+  actionBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
-  cardRow: {
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  transactionCard: {
+
+  // Filter
+  filterSection: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 15,
-    flex: width > 768 ? 0.32 : 1,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  filterScroll: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.davysGray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: COLORS.linen,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.pumpkin,
+    borderColor: COLORS.pumpkin,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.davysGray,
+  },
+  filterChipTextActive: {
+    color: COLORS.white,
+  },
+  filterSeparator: {
+    width: 1,
+    height: 20,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 4,
+  },
+
+  // List
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 100, // ✅ ruang untuk bottom tab navigator
+  },
+  listHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.davysGray,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Transaction Card
+  transactionCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.pumpkin,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  cardHeader: {
+  cardTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  cardIndexBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.pumpkinDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardIndexText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.pumpkin,
+  },
+  invoiceText: {
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.jet,
   },
-  statusBadge: {
+  timeText: {
+    fontSize: 11,
+    color: COLORS.davysGray,
+    marginTop: 2,
+  },
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.linen,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 12,
+    borderRadius: 20,
+    gap: 5,
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  statusText: {
-    fontSize: 12,
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginBottom: 12,
+  },
+  cardGrid: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    gap: 12,
+  },
+  cardGridItem: {
+    flex: 1,
+  },
+  gridLabel: {
+    fontSize: 10,
+    color: COLORS.davysGray,
+    fontWeight: '600',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  gridValue: {
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.jet,
   },
-  cardBody: {
-    gap: 12,
-  },
-  infoRow: {
+  cardBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  infoLabel: {
-    fontSize: 14,
-    color: COLORS.davysGray,
+  paymentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 5,
   },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.jet,
-    textAlign: 'right',
-    flex: 1,
-    marginLeft: 10,
+  paymentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  totalAmount: {
-    color: COLORS.pumpkin,
+  paymentChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  amountText: {
     fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.jet,
   },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.linen,
-  },
-  loadingContainer: {
+
+  // States
+  centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 50,
+    paddingHorizontal: 32,
+    paddingBottom: 80,
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: COLORS.davysGray,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 50,
-    paddingHorizontal: 20,
-  },
-  emptyText: {
-    marginTop: 15,
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.jet,
-  },
-  emptySubtext: {
-    marginTop: 8,
+    marginTop: 12,
     fontSize: 14,
     color: COLORS.davysGray,
-    textAlign: 'center',
+    fontWeight: '500',
   },
-})
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: COLORS.pumpkinDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.jet,
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: COLORS.davysGray,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  newTransactionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.pumpkin,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  newTransactionBtnText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
