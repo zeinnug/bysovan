@@ -20,6 +20,9 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 // ✅ FIX 1: Import filterTransactions untuk hitung transaksi hari ini secara akurat
 import { filterTransactions } from '../data/services/transactionService';
 import { translateErrorMessage } from '../keduitan/sold';
+// ✅ NEW: Import connectivity manager & auth service
+import { checkInternetConnectivity, getErrorType } from '../utils/connectivityManager';
+import { clearAuthData } from '../login auth/authService';
 
 const { width } = Dimensions.get('window');
 const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
@@ -486,33 +489,44 @@ const HomeScreen = () => {
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
 
-      // Fallback: coba ambil minimal jumlah transaksi hari ini meski dashboard gagal
-      const todayCount = await fetchTodayTransactionCount();
+      // ✅ NEW: Check apakah error karena konektivitas (no internet)
+      const errorType = getErrorType(error);
+      
+      if (errorType === 'NETWORK') {
+        const hasInternet = await checkInternetConnectivity();
+        
+        if (!hasInternet) {
+          // ❌ TIDAK ADA INTERNET: Logout otomatis dan redirect ke Login
+          Alert.alert(
+            'Koneksi Internet Terputus',
+            'Silakan periksa koneksi internet Anda dan login kembali.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await clearAuthData();
+                  // Force navigation kembali ke login
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' }],
+                  });
+                },
+              },
+            ]
+          );
+          setIsLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
 
-      const dummyData = {
-        totalProduk: 245,
-        pengunjungHariIni: 1234,
-        transaksiHariIni: todayCount, // ✅ Tetap akurat meski dashboard error
-        produkTerlaris: [
-          { name: 'Nike Air Jordan 1', quantity: 45 },
-          { name: 'Adidas Ultraboost', quantity: 30 },
-          { name: 'Converse Chuck 70', quantity: 25 },
-        ],
-        grafikPengunjung: [
-          { hari: 'SENIN', nilai: 45 }, { hari: 'SELASA', nilai: 85 },
-          { hari: 'RABU', nilai: 75 }, { hari: 'KAMIS', nilai: 95 },
-          { hari: 'JUMAT', nilai: 65 }, { hari: 'SABTU', nilai: 55 }, { hari: 'MINGGU', nilai: 80 },
-        ],
-        transaksiTerbaru: [
-          { id: 'TRX001', produk: 'Nike Air Max', jumlah: 2, total: 2500000 },
-          { id: 'TRX002', produk: 'Adidas Samba', jumlah: 1, total: 1200000 },
-          { id: 'TRX003', produk: 'Puma Suede', jumlah: 3, total: 1800000 },
-        ],
-      };
-      setDashboardData(dummyData);
+      // Jika ada error server atau error lainnya (bukan network), show error alert saja
       setIsLoading(false);
       setRefreshing(false);
-      if (!isLoading) Alert.alert('Peringatan', 'Gagal memuat data dari server. Menampilkan data contoh.\n\n' + translateErrorMessage(error.message));
+      Alert.alert(
+        'Peringatan',
+        'Gagal memuat data dashboard.\n\n' + translateErrorMessage(error.message)
+      );
     }
   }, [isLoading]);
 

@@ -3,15 +3,19 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Octicons } from "@expo/vector-icons";
-import { View, ActivityIndicator, StyleSheet, Text } from "react-native";
+import { View, ActivityIndicator, StyleSheet, Text, Alert } from "react-native";
 
 // Import Auth Service
 import { 
   isAuthenticated, 
   getLocalUserData, 
   getUserRole,
-  logoutUser 
+  logoutUser,
+  clearAuthData,
 } from "./login auth/authService";
+
+// ✅ NEW: Import connectivity manager
+import { checkInternetConnectivity } from "./utils/connectivityManager";
 
 // Import Auth Screens
 import Login from "./pages/Login.js";
@@ -126,11 +130,59 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticatedState, setIsAuthenticatedState] = useState(false);
   const [userData, setUserData] = useState(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const navigationRef = React.useRef(null);
 
   // Cek status autentikasi saat app pertama kali dijalankan
   useEffect(() => {
     checkAuthStatus();
   }, []);
+
+  // ✅ NEW: Monitor konektivitas internet secara berkala (setiap 15 detik)
+  useEffect(() => {
+    if (!isAuthenticatedState) return; // Hanya monitor jika user sudah login
+
+    const checkConnectivity = async () => {
+      const hasInternet = await checkInternetConnectivity();
+      
+      if (!hasInternet && isOnline) {
+        // Internet putus!
+        setIsOnline(false);
+        console.log('[App] Internet connection lost - Logging out');
+        
+        // Logout & redirect ke login
+        await clearAuthData();
+        setIsAuthenticatedState(false);
+        setUserData(null);
+        
+        // Reset navigation ke login screen
+        if (navigationRef.current) {
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+        }
+        
+        // Alert user
+        Alert.alert(
+          'Koneksi Internet Terputus',
+          'Koneksi internet telah terputus. Silakan periksa koneksi Anda dan login kembali.'
+        );
+      } else if (hasInternet && !isOnline) {
+        // Internet sudah kembali
+        setIsOnline(true);
+        console.log('[App] Internet connection restored');
+      }
+    };
+
+    // Check konektivitas setiap 15 detik
+    const interval = setInterval(checkConnectivity, 15000);
+    
+    // Check segera saat effect dijalankan
+    checkConnectivity();
+
+    return () => clearInterval(interval);
+  }, [isAuthenticatedState, isOnline]);
 
   const checkAuthStatus = async () => {
     try {
@@ -200,7 +252,7 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isAuthenticatedState ? (
           // ===== AUTHENTICATED ROUTES =====

@@ -282,46 +282,6 @@ export const hapusLaporanByIndex = async (index) => {
   }
 };
 
-// ==================== DEBUG: TEST ENDPOINT ====================
-
-export const testEndpoint = async () => {
-  console.log('=== MULAI TEST ENDPOINT ===');
-
-  try {
-    console.log('[TEST] GET /products/stock-opname...');
-    const getRes = await apiClient.get('/products/stock-opname');
-    console.log('[TEST] ✅ GET /products/stock-opname → Status:', getRes.status);
-    console.log('[TEST] Response:', JSON.stringify(getRes.data).substring(0, 500));
-  } catch (e) {
-    const status = e.response?.status ?? 'NO_RESPONSE';
-    console.log(`[TEST] ❌ GET /products/stock-opname → ${status}: ${e.response?.data?.message ?? e.message}`);
-  }
-
-  const payload = {
-    product_id: 2136, unit_code: 'UNIT-2MDSIDJZ',
-    name: 'TEST', size: '-', color: '-',
-    system_stock: 9, physical_stock: 9, difference: 0,
-  };
-
-  const formats = [
-    { label: 'reports[...]',       data: { reports: [payload] } },
-    { label: 'products[{id,...}]', data: { products: [{ id: payload.product_id, ...payload }] } },
-    { label: 'data[...]',          data: { data: [{ id: payload.product_id, physical_stock: 9 }] } },
-  ];
-
-  for (const fmt of formats) {
-    try {
-      const res = await apiClient.put('/products/stock-opname', fmt.data);
-      console.log(`[TEST] ✅ [${fmt.label}] → Status: ${res.status}`);
-    } catch (e) {
-      const status = e.response?.status ?? 'NO_RESPONSE';
-      console.log(`[TEST] ❌ [${fmt.label}] → ${status}: ${e.response?.data?.message ?? e.message}`);
-    }
-  }
-
-  console.log('=== SELESAI TEST ENDPOINT ===');
-};
-
 // ==================== DEFAULT EXPORT ====================
 
 const stockOpnameService = {
@@ -333,7 +293,6 @@ const stockOpnameService = {
   getLaporanDariCache,
   hapusSemuaLaporanDariCache,
   hapusLaporanCacheByIndex,
-  testEndpoint,
 };
 
 export default stockOpnameService;
