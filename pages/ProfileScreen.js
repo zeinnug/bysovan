@@ -49,14 +49,12 @@ const ProfileScreen = ({ userData, onLogout }) => {
       ]
     },
     {
-      title: 'Pengaturan',
-      icon: 'gear',
-      action: () => Alert.alert('Info', 'Fitur pengaturan akan segera hadir')
-    },
-    {
       title: 'Bantuan & Dukungan',
       icon: 'question',
-      action: () => Alert.alert('Bantuan', 'Hubungi admin untuk bantuan: admin@sepatubysovan.com')
+      action: () => Alert.alert(
+        'Bantuan & Dukungan',
+        'Hubungi kami untuk bantuan:\n\n👤 Wahyu Ramadhani (Server)\n📞 +62 822-4199-2151\n\n👤 Muhammad Zein Al-K (Dev App)\n📞 +62 859-7952-8680'
+      )
     },
     {
       title: 'Tentang Aplikasi',
@@ -75,7 +73,7 @@ const ProfileScreen = ({ userData, onLogout }) => {
         <Text style={styles.headerTitle}>PROFIL</Text>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -108,8 +106,8 @@ const ProfileScreen = ({ userData, onLogout }) => {
               // Info items
               <View style={styles.infoCard}>
                 {section.items.map((item, itemIndex) => (
-                  <View 
-                    key={itemIndex} 
+                  <View
+                    key={itemIndex}
                     style={[
                       styles.infoRow,
                       itemIndex < section.items.length - 1 && styles.infoRowBorder
@@ -122,7 +120,7 @@ const ProfileScreen = ({ userData, onLogout }) => {
               </View>
             ) : (
               // Action item
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.actionCard}
                 onPress={section.action}
               >
@@ -134,7 +132,7 @@ const ProfileScreen = ({ userData, onLogout }) => {
         ))}
 
         {/* Logout Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.logoutButton}
           onPress={handleLogout}
         >

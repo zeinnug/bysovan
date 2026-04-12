@@ -292,14 +292,14 @@ const ModernPieChart = memo(({ data, title, subtitle }) => {
 
 // ─── Transaction Table ────────────────────────────────────────────────────────
 const TransactionTable = memo(({ transactions, navigation }) => {
-  const formatDate = (dateString) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return dateString || '-';
-    }
-  };
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
+
+  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE);
+  const paginatedTransactions = transactions.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
 
   const formatCurrency = (amount) => {
     return amount.toLocaleString('id-ID', {
@@ -336,7 +336,7 @@ const TransactionTable = memo(({ transactions, navigation }) => {
             <Text style={styles.txEmptyText}>Belum ada transaksi hari ini</Text>
           </View>
         ) : (
-          transactions.map((item, index) => (
+          paginatedTransactions.map((item, index) => (
             <View
               key={item.id || index}
               style={[styles.txRow, index % 2 === 0 && styles.txRowEven]}
@@ -353,6 +353,33 @@ const TransactionTable = memo(({ transactions, navigation }) => {
               </Text>
             </View>
           ))
+        )}
+
+        {/* ── Pagination Controls ── */}
+        {totalPages > 1 && (
+          <View style={styles.paginationRow}>
+            <TouchableOpacity
+              style={[styles.pageBtn, currentPage === 0 && styles.pageBtnDisabled]}
+              onPress={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+            >
+              <Octicons name="chevron-left" size={16} color={currentPage === 0 ? '#C0B8B0' : '#FC6A0A'} />
+              <Text style={[styles.pageBtnText, currentPage === 0 && styles.pageBtnTextDisabled]}>Back</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.pageInfo}>
+              {currentPage + 1} / {totalPages}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.pageBtn, currentPage === totalPages - 1 && styles.pageBtnDisabled]}
+              onPress={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage === totalPages - 1}
+            >
+              <Text style={[styles.pageBtnText, currentPage === totalPages - 1 && styles.pageBtnTextDisabled]}>Next</Text>
+              <Octicons name="chevron-right" size={16} color={currentPage === totalPages - 1 ? '#C0B8B0' : '#FC6A0A'} />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </View>
@@ -856,6 +883,46 @@ const styles = StyleSheet.create({
 
   txEmpty: { alignItems: 'center', paddingVertical: 36, gap: 10 },
   txEmptyText: { fontSize: 13, color: '#585757' },
+
+  // Pagination
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0E8DF',
+    backgroundColor: '#FDFAF7',
+  },
+  pageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(252,106,10,0.3)',
+    backgroundColor: 'rgba(252,106,10,0.06)',
+  },
+  pageBtnDisabled: {
+    borderColor: 'rgba(88,87,87,0.15)',
+    backgroundColor: 'transparent',
+  },
+  pageBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FC6A0A',
+  },
+  pageBtnTextDisabled: {
+    color: '#C0B8B0',
+  },
+  pageInfo: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#292929',
+  },
 });
 
 export default HomeScreen;
