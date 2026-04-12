@@ -708,11 +708,16 @@ function ReviewView({
 function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) {
   const selisihItems = daftarScan.filter((p) => p.jumlahScan !== p.stokSistem);
 
+  const tanggalLaporan = new Date().toLocaleDateString('id-ID', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+  });
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: C.linen }}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
     >
+      {/* ── Header Laporan ── */}
       <View style={s.laporanHeader}>
         <View style={s.laporanSavedBadge}>
           <Octicons name="check-circle-fill" size={13} color={C.white} />
@@ -726,6 +731,7 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
         </Text>
       </View>
 
+      {/* ── Ringkasan ── */}
       {ringkasan && (
         <View style={s.laporanRingkasan}>
           <RingkasanBox label="Jenis Scan"  value={ringkasan.totalJenis}   color={C.jet} />
@@ -735,6 +741,92 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
         </View>
       )}
 
+      {/* ── Tabel Semua Produk Terscan ── */}
+      <View style={[s.detailCard, { marginBottom: 14 }]}>
+        <View style={s.detailCardHeader}>
+          <Octicons name="table" size={14} color={C.jet} />
+          <Text style={[s.detailCardTitle, { color: C.jet }]}>
+            Semua Produk Terscan ({daftarScan.length})
+          </Text>
+        </View>
+
+        {/* Header Tabel */}
+        <View style={s.laporanTblHead}>
+          <Text style={[s.laporanTblHeadText, { flex: 1.0 }]}>Tanggal</Text>
+          <Text style={[s.laporanTblHeadText, { flex: 1.6 }]}>Produk</Text>
+          <Text style={[s.laporanTblHeadText, { flex: 0.7, textAlign: 'center' }]}>Ukuran</Text>
+          <Text style={[s.laporanTblHeadText, { flex: 0.8, textAlign: 'center' }]}>Warna</Text>
+          <Text style={[s.laporanTblHeadText, { flex: 0.6, textAlign: 'center' }]}>Sis.</Text>
+          <Text style={[s.laporanTblHeadText, { flex: 0.6, textAlign: 'center' }]}>Fisik</Text>
+          <Text style={[s.laporanTblHeadText, { flex: 0.5, textAlign: 'center' }]}>Δ</Text>
+        </View>
+
+        {/* Baris Produk */}
+        {daftarScan.map((item, idx) => {
+          const delta     = item.jumlahScan - item.stokSistem;
+          const isSelisih = delta !== 0;
+
+          return (
+            <View
+              key={item.groupKey ?? idx}
+              style={[
+                s.laporanTblRow,
+                idx % 2 === 1 && s.laporanTblRowAlt,
+                isSelisih && s.laporanTblRowSelisih,
+                idx < daftarScan.length - 1 && s.detailRowBorder,
+              ]}
+            >
+              {/* Tanggal */}
+              <Text style={[s.laporanTblCell, { flex: 1.0 }]} numberOfLines={1}>
+                {tanggalLaporan}
+              </Text>
+
+              {/* Produk */}
+              <Text style={[s.laporanTblProductName, { flex: 1.6 }]} numberOfLines={1}>
+                {item.namaProduk}
+              </Text>
+
+              {/* Ukuran */}
+              <Text style={[s.laporanTblCell, { flex: 0.7 }]}>{item.ukuran}</Text>
+
+              {/* Warna */}
+              <Text style={[s.laporanTblCell, { flex: 0.8 }]} numberOfLines={1}>
+                {item.warna}
+              </Text>
+
+              {/* Stok Sistem */}
+              <Text style={[s.laporanTblCell, { flex: 0.6 }]}>{item.stokSistem}</Text>
+
+              {/* Stok Fisik (hasil scan) */}
+              <Text style={[
+                s.laporanTblCell,
+                { flex: 0.6 },
+                isSelisih ? s.tblCellBad : s.tblCellOk,
+              ]}>
+                {item.jumlahScan}
+              </Text>
+
+              {/* Selisih */}
+              <Text style={[
+                s.laporanTblCell,
+                { flex: 0.5 },
+                delta === 0 ? s.tblCellOk : s.tblCellBad,
+              ]}>
+                {delta === 0 ? '0' : delta > 0 ? `+${delta}` : `${delta}`}
+              </Text>
+            </View>
+          );
+        })}
+
+        {daftarScan.length === 0 && (
+          <View style={s.emptyList}>
+            <Octicons name="inbox" size={28} color={C.davyGray} />
+            <Text style={s.emptyText}>Tidak ada produk terscan</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Kartu Selisih ── */}
       {selisihItems.length > 0 && (
         <View style={s.detailCard}>
           <View style={s.detailCardHeader}>
@@ -777,6 +869,7 @@ function LaporanView({ daftarScan, ringkasan, onKembaliInventory, onScanBaru }) 
         </View>
       )}
 
+      {/* ── Aksi ── */}
       <View style={[s.tblActions, { marginTop: 16 }]}>
         <TouchableOpacity style={s.btnOutline} onPress={onScanBaru}>
           <Octicons name="sync" size={14} color={C.pumpkin} />
@@ -865,12 +958,12 @@ const s = StyleSheet.create({
 
   // Idle
   idleContainer: {
-    flexGrow: 1,                  // ← mengisi sisa layar, tidak ada gap kosong
+    flexGrow: 1,
     backgroundColor: C.linen,
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,
-    justifyContent: 'center',    // ← konten terpusat vertikal
+    justifyContent: 'center',
   },
   idleIconWrap: {
     width: 90, height: 90, borderRadius: 24, backgroundColor: C.pumpkin,
@@ -964,7 +1057,7 @@ const s = StyleSheet.create({
   filterTabText: { fontSize: 12, color: C.davyGray, fontWeight: '600' },
   filterTabTextActive: { color: C.white },
 
-  // Table
+  // Table (Review)
   tblHeader: {
     flexDirection: 'row', backgroundColor: C.davyGray,
     paddingHorizontal: 12, paddingVertical: 9,
@@ -1040,6 +1133,48 @@ const s = StyleSheet.create({
   },
   ringkasanValue: { fontSize: 24, fontWeight: '900' },
   ringkasanLabel: { fontSize: 10, color: C.davyGray, marginTop: 3, textAlign: 'center' },
+
+  // Laporan Tabel Semua Produk
+  laporanTblHead: {
+    flexDirection: 'row',
+    backgroundColor: C.davyGray,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  laporanTblHeadText: {
+    color: C.linen,
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  laporanTblRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  laporanTblRowAlt: {
+    backgroundColor: C.linen,
+  },
+  laporanTblRowSelisih: {
+    backgroundColor: C.warnBg,
+  },
+  laporanTblProductName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.jet,
+    textAlign: 'left',
+  },
+  laporanTblCell: {
+    fontSize: 11,
+    color: C.jet,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+
+  // Detail Selisih Card
   detailCard: {
     backgroundColor: C.white, borderRadius: 16, padding: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, elevation: 2,
