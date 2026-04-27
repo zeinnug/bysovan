@@ -10,14 +10,24 @@ import {
   RefreshControl,
   Alert,
   Animated,
+  Image,
 } from 'react-native';
+import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Octicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+
+// ✅ FIX 1: Import filterTransactions untuk hitung transaksi hari ini secara akurat
+import { filterTransactions } from '../data/services/transactionService';
+import { translateErrorMessage } from '../keduitan/sold';
+// ✅ NEW: Import connectivity manager & auth service
+import { checkInternetConnectivity, getErrorType } from '../utils/connectivityManager';
+import { clearAuthData } from '../login auth/authService';
 
 const { width } = Dimensions.get('window');
 const API_BASE_URL = 'https://testingaplikasi.tokosepatusovan.com/api';
 
-// Animated Number Component
+// ─── Animated Number ─────────────────────────────────────────────────────────
 const AnimatedNumber = memo(({ value, isCurrency = false }) => {
   const [displayValue, setDisplayValue] = useState(0);
 
@@ -48,340 +58,519 @@ const AnimatedNumber = memo(({ value, isCurrency = false }) => {
   );
 });
 
-// Stat Card Component
-const StatCard = memo(({ title, value, icon, delay = 0, isCurrency = false }) => {
-  const [isVisible, setIsVisible] = useState(false);
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+const StatCard = memo(({ title, value, icon, delay = 0, isCurrency = false, accent = false }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(18)).current;
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setIsVisible(true);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 450, useNativeDriver: true }),
+      ]).start();
     }, delay);
     return () => clearTimeout(timer);
   }, [delay]);
 
   return (
-    <Animated.View style={[styles.statCard, { opacity: fadeAnim }]}>
-      <View style={styles.statIconContainer}>
+    <Animated.View
+      style={[
+        styles.statCard,
+        accent && styles.statCardAccent,
+        { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+      ]}
+    >
+      <View style={[styles.statIconBadge, accent && styles.statIconBadgeAccent]}>
         <Text style={styles.statIconText}>{icon}</Text>
       </View>
-      <View style={styles.statContent}>
-        <Text style={styles.statLabel}>{title}</Text>
-        {isCurrency ? (
-          <AnimatedNumber value={value} isCurrency={true} />
-        ) : (
-          <AnimatedNumber value={value} />
-        )}
-      </View>
+      <Text style={[styles.statLabel, accent && styles.statLabelAccent]}>{title}</Text>
+      {isCurrency ? (
+        <AnimatedNumber value={value} isCurrency={true} />
+      ) : (
+        <AnimatedNumber value={value} />
+      )}
     </Animated.View>
   );
 });
 
-// Bar Chart Component
+// ─── Bar Chart ────────────────────────────────────────────────────────────────
 const SimpleBarChart = memo(({ data, labels, title, subtitle }) => {
   const maxValue = Math.max(...data, 1);
-  const colors = ['#FC6A0A', '#E74504', '#FC6A0A', '#E74504', '#FC6A0A', '#E74504'];
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const barAnims = useRef(data.map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+    Animated.stagger(80, barAnims.map(anim =>
+      Animated.timing(anim, { toValue: 1, duration: 600, useNativeDriver: false })
+    )).start();
+  }, []);
 
   return (
-    <View style={styles.chartCard}>
-      <Text style={styles.chartTitle}>{title}</Text>
-      <Text style={styles.chartSubtitle}>{subtitle}</Text>
-      
+    <Animated.View style={[styles.chartCard, { opacity: fadeAnim }]}>
+      <View style={styles.chartCardHeader}>
+        <View style={styles.chartTitleDot} />
+        <View>
+          <Text style={styles.chartTitle}>{title}</Text>
+          <Text style={styles.chartSubtitle}>{subtitle}</Text>
+        </View>
+      </View>
+
       {data.length === 0 ? (
         <View style={styles.emptyState}>
-          <Octicons name="inbox" size={40} color="#585757" />
+          <Octicons name="inbox" size={36} color="#585757" />
           <Text style={styles.emptyText}>Belum ada data untuk ditampilkan</Text>
         </View>
       ) : (
-        <>
-          <View style={styles.barChart}>
-            {data.map((value, index) => {
-              const heightPercentage = (value / maxValue) * 100;
-              return (
-                <View key={index} style={styles.barWrapper}>
-                  <View style={styles.barColumn}>
-                    <View 
-                      style={[
-                        styles.bar, 
-                        { 
-                          height: `${heightPercentage}%`,
-                          backgroundColor: colors[index % colors.length]
-                        }
-                      ]} 
-                    />
-                  </View>
-                  <Text style={styles.barValue}>{value}</Text>
-                  <Text style={styles.barLabel}>
-                    {labels[index]?.length > 6 ? labels[index].substring(0, 6) + '...' : labels[index]}
-                  </Text>
+        <View style={styles.barChart}>
+          {data.map((value, index) => {
+            const heightPercentage = (value / maxValue) * 100;
+            const isHighest = value === Math.max(...data);
+            return (
+              <View key={index} style={styles.barWrapper}>
+                <Text style={[styles.barValue, isHighest && styles.barValueHighlight]}>{value}</Text>
+                <View style={styles.barTrack}>
+                  <Animated.View
+                    style={[
+                      styles.bar,
+                      {
+                        height: barAnims[index]
+                          ? barAnims[index].interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ['0%', `${heightPercentage}%`],
+                            })
+                          : `${heightPercentage}%`,
+                        backgroundColor: isHighest ? '#FC6A0A' : '#585757',
+                      },
+                    ]}
+                  />
                 </View>
-              );
-            })}
-          </View>
-        </>
-      )}
-    </View>
-  );
-});
-
-// Pie Chart Component
-const SimplePieChart = memo(({ data, title, subtitle }) => {
-  const total = data.reduce((sum, item) => sum + item.quantity, 0);
-  const colors = ['#FC6A0A', '#E74504', '#585757'];
-
-  return (
-    <View style={styles.chartCard}>
-      <Text style={styles.chartTitle}>{title}</Text>
-      <Text style={styles.chartSubtitle}>{subtitle}</Text>
-      
-      {data.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Octicons name="inbox" size={40} color="#585757" />
-          <Text style={styles.emptyText}>Belum ada data produk terlaris</Text>
-        </View>
-      ) : (
-        <View style={styles.legendContainer}>
-          {data.map((item, index) => (
-            <View key={index} style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: colors[index % colors.length] }]} />
-              <View style={styles.legendTextContainer}>
-                <Text style={styles.legendText} numberOfLines={1}>
-                  {item.name || '-'}
-                </Text>
-                <Text style={styles.legendSubtext}>
-                  {item.quantity || 0} unit
+                <Text style={styles.barLabel}>
+                  {labels[index]?.length > 3 ? labels[index].substring(0, 3) : labels[index]}
                 </Text>
               </View>
-              <Text style={styles.legendPercentage}>
-                {total > 0 ? ((item.quantity / total) * 100).toFixed(1) : 0}%
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 });
 
-// Transaction Table Component
-const TransactionTable = memo(({ transactions }) => {
-  const formatDate = (dateString) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString('id-ID', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return dateString || '-';
-    }
-  };
+// ─── Modern Pie Chart ─────────────────────────────────────────────────────────
+const ModernPieChart = memo(({ data, title, subtitle }) => {
+  const [animationProgress, setAnimationProgress] = useState(0);
+  const [selectedSegment, setSelectedSegment] = useState(null);
+  const animatedValue = useRef(new Animated.Value(0)).current;
 
-  const formatCurrency = (amount) => {
-    return amount.toLocaleString('id-ID', { 
-      style: 'currency', 
-      currency: 'IDR', 
-      minimumFractionDigits: 0, 
-      maximumFractionDigits: 0 
+  const total = (Array.isArray(data) ? data : []).reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const colors = ['#FC6A0A', '#E74504', '#585757', '#FFB366', '#D63A00'];
+
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 1200,
+      useNativeDriver: false,
+    }).start();
+
+    const listener = animatedValue.addListener(({ value }) => {
+      setAnimationProgress(value);
+    });
+
+    return () => animatedValue.removeListener(listener);
+  }, [data]);
+
+  const renderAnimatedPieChart = () => {
+    let cumulativeAngle = -Math.PI / 2;
+    const centerX = 100;
+    const centerY = 100;
+    const radius = 72;
+    const innerRadius = 44;
+
+    return (Array.isArray(data) ? data : []).map((item, index) => {
+      const quantity = item.quantity || 0;
+      const percentage = total > 0 ? (quantity / total) : 0;
+      const fullAngle = percentage * 2 * Math.PI;
+      const animatedAngle = fullAngle * animationProgress;
+
+      const startAngle = cumulativeAngle;
+      const endAngle = cumulativeAngle + animatedAngle;
+
+      const outerStartX = centerX + radius * Math.cos(startAngle);
+      const outerStartY = centerY + radius * Math.sin(startAngle);
+      const outerEndX = centerX + radius * Math.cos(endAngle);
+      const outerEndY = centerY + radius * Math.sin(endAngle);
+
+      const innerStartX = centerX + innerRadius * Math.cos(startAngle);
+      const innerStartY = centerY + innerRadius * Math.sin(startAngle);
+      const innerEndX = centerX + innerRadius * Math.cos(endAngle);
+      const innerEndY = centerY + innerRadius * Math.sin(endAngle);
+
+      const largeArcFlag = percentage > 0.5 ? 1 : 0;
+
+      const pathData = [
+        'M', outerStartX, outerStartY,
+        'A', radius, radius, 0, largeArcFlag, 1, outerEndX, outerEndY,
+        'L', innerEndX, innerEndY,
+        'A', innerRadius, innerRadius, 0, largeArcFlag, 0, innerStartX, innerStartY,
+        'Z'
+      ].join(' ');
+
+      cumulativeAngle += fullAngle;
+
+      return (
+        <Path
+          key={index}
+          d={pathData}
+          fill={colors[index % colors.length]}
+          stroke="#1C1C1C"
+          strokeWidth={2}
+          opacity={selectedSegment === null || selectedSegment === index ? 1 : 0.35}
+        />
+      );
     });
   };
 
   return (
-    <View style={styles.transactionSection}>
-      <View style={styles.transactionHeader}>
-        <Text style={styles.transactionTitle}>Detail Transaksi</Text>
-        <TouchableOpacity>
-          <Text style={styles.viewAllButton}>Lihat Semua</Text>
+    <View style={styles.modernChartCard}>
+      <View style={styles.chartCardHeader}>
+        <View style={styles.chartTitleDot} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.chartTitle}>{title}</Text>
+          <Text style={styles.chartSubtitle}>{subtitle}</Text>
+        </View>
+        <View style={styles.periodBadge}>
+          <Text style={styles.periodText}>Bulan Ini</Text>
+        </View>
+      </View>
+
+      {(!Array.isArray(data) || data.length === 0) ? (
+        <View style={styles.emptyState}>
+          <Octicons name="graph" size={36} color="#585757" />
+          <Text style={styles.emptyText}>Belum ada data produk terlaris</Text>
+        </View>
+      ) : (
+        <View style={styles.pieLayout}>
+          <View style={styles.pieChartWrapper}>
+            <Svg width={200} height={200}>
+              {renderAnimatedPieChart()}
+            </Svg>
+            <View style={styles.centerTextContainer}>
+              <Text style={styles.centerValue}>{total}</Text>
+              <Text style={styles.centerLabel}>Unit</Text>
+            </View>
+          </View>
+
+          <View style={styles.legendList}>
+            {(Array.isArray(data) ? data : []).map((item, index) => {
+              const quantity = item.quantity || 0;
+              const percentage = total > 0 ? ((quantity / total) * 100).toFixed(1) : '0.0';
+              const isSelected = selectedSegment === index;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.legendRow, isSelected && styles.legendRowSelected]}
+                  onPress={() => setSelectedSegment(isSelected ? null : index)}
+                  activeOpacity={0.75}
+                >
+                  <View style={[styles.legendSwatch, { backgroundColor: colors[index % colors.length] }]} />
+                  <View style={styles.legendText}>
+                    <Text style={styles.legendName} numberOfLines={1}>{item.name || '-'}</Text>
+                    <Text style={styles.legendSub}>{quantity} unit</Text>
+                  </View>
+                  <Text style={styles.legendPct}>{percentage}%</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+});
+
+// ─── Transaction Table ────────────────────────────────────────────────────────
+const TransactionTable = memo(({ transactions, navigation }) => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
+
+  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE);
+  const paginatedTransactions = transactions.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
+
+  const formatCurrency = (amount) => {
+    return amount.toLocaleString('id-ID', {
+      style: 'currency', currency: 'IDR',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    });
+  };
+
+  return (
+    <View style={styles.txSection}>
+      <View style={styles.txHeader}>
+        <View style={styles.txTitleRow}>
+          <View style={styles.chartTitleDot} />
+          <Text style={styles.txTitle}>Transaksi Terbaru</Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation?.navigate('Transaksi')} style={styles.viewAllBtn}>
+          <Text style={styles.viewAllText}>Lihat Semua</Text>
+          <Octicons name="arrow-right" size={13} color="#FC6A0A" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.transactionTable}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderText, { flex: 1 }]}>ID</Text>
-          <Text style={[styles.tableHeaderText, { flex: 2 }]}>Produk</Text>
-          <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Qty</Text>
-          <Text style={[styles.tableHeaderText, { flex: 1.5, textAlign: 'right' }]}>Total</Text>
+      <View style={styles.txCard}>
+        {/* Table Header */}
+        <View style={styles.txTableHead}>
+          <Text style={[styles.thText, { flex: 0.7 }]}>ID</Text>
+          <Text style={[styles.thText, { flex: 2 }]}>Produk</Text>
+          <Text style={[styles.thText, { flex: 0.6, textAlign: 'center' }]}>Qty</Text>
+          <Text style={[styles.thText, { flex: 1.4, textAlign: 'right' }]}>Total</Text>
         </View>
 
         {transactions.length === 0 ? (
-          <View style={styles.emptyTableRow}>
-            <Text style={styles.emptyTableText}>Belum ada transaksi hari ini</Text>
+          <View style={styles.txEmpty}>
+            <Octicons name="inbox" size={28} color="#585757" />
+            <Text style={styles.txEmptyText}>Belum ada transaksi hari ini</Text>
           </View>
         ) : (
-          transactions.map((item, index) => (
-            <View key={item.id || index} style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{item.id || '-'}</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>
-                {item.produk || '-'}
-              </Text>
-              <Text style={[styles.tableCell, { flex: 1, textAlign: 'center' }]}>
-                {item.jumlah || 0}
-              </Text>
-              <Text style={[styles.tableCell, { flex: 1.5, textAlign: 'right', fontWeight: '600' }]}>
+          paginatedTransactions.map((item, index) => (
+            <View
+              key={item.id || index}
+              style={[styles.txRow, index % 2 === 0 && styles.txRowEven]}
+            >
+              <Text style={[styles.tdId, { flex: 0.7 }]}>{item.id || '-'}</Text>
+              <Text style={[styles.tdText, { flex: 2 }]} numberOfLines={1}>{item.produk || '-'}</Text>
+              <View style={[{ flex: 0.6, alignItems: 'center' }]}>
+                <View style={styles.qtyBadge}>
+                  <Text style={styles.qtyText}>{item.jumlah || 0}</Text>
+                </View>
+              </View>
+              <Text style={[styles.tdAmount, { flex: 1.4, textAlign: 'right' }]}>
                 {formatCurrency(item.total || 0)}
               </Text>
             </View>
           ))
         )}
+
+        {/* ── Pagination Controls ── */}
+        {totalPages > 1 && (
+          <View style={styles.paginationRow}>
+            <TouchableOpacity
+              style={[styles.pageBtn, currentPage === 0 && styles.pageBtnDisabled]}
+              onPress={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+            >
+              <Octicons name="chevron-left" size={16} color={currentPage === 0 ? '#C0B8B0' : '#FC6A0A'} />
+              <Text style={[styles.pageBtnText, currentPage === 0 && styles.pageBtnTextDisabled]}>Back</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.pageInfo}>
+              {currentPage + 1} / {totalPages}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.pageBtn, currentPage === totalPages - 1 && styles.pageBtnDisabled]}
+              onPress={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage === totalPages - 1}
+            >
+              <Text style={[styles.pageBtnText, currentPage === totalPages - 1 && styles.pageBtnTextDisabled]}>Next</Text>
+              <Octicons name="chevron-right" size={16} color={currentPage === totalPages - 1 ? '#C0B8B0' : '#FC6A0A'} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );
 });
 
+// ─── Home Screen ──────────────────────────────────────────────────────────────
 const HomeScreen = () => {
   const [dashboardData, setDashboardData] = useState({
     totalProduk: 0,
     pengunjungHariIni: 0,
-    totalStok: 0,
+    transaksiHariIni: 0,
     produkTerlaris: [],
     grafikPengunjung: [],
-    transaksiTerbaru: []
+    transaksiTerbaru: [],
   });
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const prevDataRef = useRef(null);
+  const navigation = useNavigation();
 
-  // Update current time every minute
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // ✅ FIX 2: Helper format tanggal YYYY-MM-DD (sama persis dengan TransactionScreen)
+  const getTodayString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // ✅ FIX 3: Fungsi khusus untuk ambil jumlah transaksi hari ini yang akurat
+  // Menggunakan endpoint /transactions?date=YYYY-MM-DD yang sama dengan TransactionScreen
+  const fetchTodayTransactionCount = async () => {
+    try {
+      const result = await filterTransactions({
+        date: getTodayString(),
+      });
+
+      if (result.success) {
+        const transactionData =
+          result.data?.data?.transactions && Array.isArray(result.data.data.transactions)
+            ? result.data.data.transactions
+            : Array.isArray(result.data) ? result.data
+            : result.data?.transactions ? result.data.transactions
+            : [];
+
+        return transactionData.length;
+      }
+      return 0;
+    } catch (error) {
+      console.error('[HomeScreen] Error fetching today transaction count:', error);
+      return 0;
+    }
+  };
 
   const fetchDashboardData = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      
-      if (!token) {
-        Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.');
-        return;
-      }
+      if (!token) { Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.'); return; }
 
-      const response = await fetch(`${API_BASE_URL}/dashboard`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      });
+      // ✅ FIX 4: Jalankan dashboard API dan hitung transaksi hari ini secara paralel
+      const [dashboardResponse, todayCount] = await Promise.all([
+        fetch(`${API_BASE_URL}/dashboard`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        }),
+        fetchTodayTransactionCount(),
+      ]);
 
-      const text = await response.text();
+      const text = await dashboardResponse.text();
       let data;
-      
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        throw new Error('Server tidak mengembalikan JSON valid');
-      }
+      try { data = JSON.parse(text); } catch { throw new Error('Server tidak mengembalikan JSON valid'); }
 
-      if (!response.ok) {
-        throw new Error(data.message || `Gagal mengambil data: ${response.status}`);
-      }
+      if (!dashboardResponse.ok) throw new Error(data.message || `Gagal mengambil data: ${dashboardResponse.status}`);
 
       const result = data.data || data;
 
-      // Parse data dengan format yang fleksibel
+      const defaultWeekLabels = ['SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU', 'MINGGU'];
+      const weeklyRaw = result.grafik_pengunjung || result.grafikPengunjung || result.weekly_visitors || result.pengunjung_mingguan || result.visitors_weekly || [];
+
+      let grafikPengunjung = [];
+      if (Array.isArray(weeklyRaw) && weeklyRaw.length > 0) {
+        if (typeof weeklyRaw[0] === 'number') {
+          grafikPengunjung = weeklyRaw.slice(0, 7).map((v, i) => ({ hari: defaultWeekLabels[i] || `H${i+1}`, nilai: parseInt(v) || 0 }));
+        } else {
+          grafikPengunjung = weeklyRaw.map((item, i) => ({
+            hari: item.hari || item.day || item.label || defaultWeekLabels[i] || `H${i+1}`,
+            nilai: parseInt(item.nilai ?? item.value ?? item.count ?? item.visitors ?? 0) || 0,
+          }));
+        }
+      }
+
       const parsedData = {
         totalProduk: result.total_produk || result.totalProduk || result.total_products || 0,
-        pengunjungHariIni: result.pengunjung_hari_ini || result.pengunjungHariIni || result.total_transactions || 0,
-        totalStok: result.total_stok || result.totalStok || result.total_sales || 0,
-        
+        pengunjungHariIni: result.pengunjung_hari_ini || result.pengunjungHariIni || 0,
+
+        // ✅ FIX 5: Prioritaskan field dari API, fallback ke hitungan akurat dari filterTransactions
+        transaksiHariIni: result.transaksi_hari_ini
+          ?? result.transaksiHariIni
+          ?? result.today_transactions_count
+          ?? result.today_transaction_count
+          ?? result.total_transactions_today
+          ?? todayCount, // ← hitungan akurat dari /transactions?date=today
+
         produkTerlaris: (result.produk_terlaris || result.produkTerlaris || result.top_products || []).map(item => ({
-          name: item.nama || item.name || '-',
-          quantity: parseInt(item.quantity || item.persentase || 0)
+          name: (item.produk && (item.produk.nama || item.produk.name)) || (item.product && item.product.name) || item.nama_produk || item.product_name || item.namaProduct || item.nama || item.name || '-',
+          quantity: parseInt(item.quantity ?? item.jumlah ?? item.units ?? 0) || 0,
+          percentageHint: item.persentase ?? item.percentage ?? item.percent ?? null,
         })),
-        
-        grafikPengunjung: (result.grafik_pengunjung || result.grafikPengunjung || result.hourly_data || []).map((nilai, index) => ({
-          hari: (result.labels || [])[index] || `H${index + 1}`,
-          nilai: parseInt(nilai) || 0
-        })),
-        
+        grafikPengunjung,
         transaksiTerbaru: (result.transaksi_terbaru || result.transaksiTerbaru || result.recent_transactions || []).slice(0, 5).map(t => ({
           id: t.id || '-',
           produk: t.produk || t.items?.map(i => i.product?.name).join(', ') || '-',
           jumlah: t.jumlah || t.items?.length || 1,
-          total: parseFloat(t.total || t.final_amount || 0)
-        }))
+          total: parseFloat(t.total || t.final_amount || 0),
+        })),
       };
 
-      // Cek apakah ada perubahan data
-      const hasChanged = JSON.stringify(prevDataRef.current) !== JSON.stringify(parsedData);
-      
-      if (hasChanged || isLoading) {
-        setDashboardData(parsedData);
-        prevDataRef.current = parsedData;
-      }
-
+      setDashboardData(parsedData);
+      prevDataRef.current = parsedData;
       setIsLoading(false);
       setRefreshing(false);
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      
-      // Fallback ke dummy data
-      const dummyData = {
-        totalProduk: 245,
-        pengunjungHariIni: 1234,
-        totalStok: 8567,
-        produkTerlaris: [
-          { name: 'Nike Air Jordan 1', quantity: 45 },
-          { name: 'Adidas Ultraboost', quantity: 30 },
-          { name: 'Converse Chuck 70', quantity: 25 },
-        ],
-        grafikPengunjung: [
-          { hari: 'SENIN', nilai: 45 },
-          { hari: 'SELASA', nilai: 85 },
-          { hari: 'RABU', nilai: 75 },
-          { hari: 'KAMIS', nilai: 95 },
-          { hari: 'JUMAT', nilai: 65 },
-          { hari: 'SABTU', nilai: 55 },
-          { hari: 'MINGGU', nilai: 80 },
-        ],
-        transaksiTerbaru: [
-          { id: 'TRX001', produk: 'Nike Air Max', jumlah: 2, total: 2500000 },
-          { id: 'TRX002', produk: 'Adidas Samba', jumlah: 1, total: 1200000 },
-          { id: 'TRX003', produk: 'Puma Suede', jumlah: 3, total: 1800000 },
-        ]
-      };
 
-      setDashboardData(dummyData);
+      // ✅ NEW: Check apakah error karena konektivitas (no internet)
+      const errorType = getErrorType(error);
+      
+      if (errorType === 'NETWORK') {
+        const hasInternet = await checkInternetConnectivity();
+        
+        if (!hasInternet) {
+          // ❌ TIDAK ADA INTERNET: Logout otomatis dan redirect ke Login
+          Alert.alert(
+            'Koneksi Internet Terputus',
+            'Silakan periksa koneksi internet Anda dan login kembali.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await clearAuthData();
+                  // Force navigation kembali ke login
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' }],
+                  });
+                },
+              },
+            ]
+          );
+          setIsLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+
+      // Jika ada error server atau error lainnya (bukan network), show error alert saja
       setIsLoading(false);
       setRefreshing(false);
-
-      if (!isLoading) {
-        Alert.alert(
-          'Peringatan',
-          'Gagal memuat data dari server. Menampilkan data contoh.\n\n' + error.message
-        );
-      }
+      Alert.alert(
+        'Peringatan',
+        'Gagal memuat data dashboard.\n\n' + translateErrorMessage(error.message)
+      );
     }
   }, [isLoading]);
 
-  // Initial fetch
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  useEffect(() => { fetchDashboardData(); }, []);
 
-  // Auto refresh every 5 seconds
+  useFocusEffect(useCallback(() => {
+    console.log('Dashboard focused - refreshing data...');
+    fetchDashboardData();
+  }, [fetchDashboardData]));
+
+  // ✅ FIX 6: Polling tiap 10 detik (lebih wajar dari 5 detik)
   useEffect(() => {
-    const interval = setInterval(fetchDashboardData, 5000);
+    const interval = setInterval(fetchDashboardData, 10000);
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchDashboardData();
-  };
+  const onRefresh = () => { setRefreshing(true); fetchDashboardData(); };
 
   if (isLoading) {
     return (
@@ -392,417 +581,347 @@ const HomeScreen = () => {
     );
   }
 
+  const dateStr = currentTime.toLocaleString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const timeStr = currentTime.toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.logoContainer}>
-            <Octicons name="package" size={24} color="#FC6A0A" />
+          <View style={styles.logoBox}>
+            <Image source={require('../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
           </View>
           <View>
-            <Text style={styles.headerTitle}>DASHBOARD</Text>
-            <Text style={styles.headerSubtitle}>@SEPATUBYSOVAN</Text>
+            <Text style={styles.headerBrand}>SEPATU SOVAN</Text>
+            <Text style={styles.headerTagline}>Sistem Manajemen Toko Sepatu</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.notificationButton}>
-          <Octicons name="bell" size={24} color="#F5ECE4" />
-          <View style={styles.notificationBadge} />
+        <TouchableOpacity style={styles.notifBtn}>
+          <Octicons name="bell" size={20} color="#F5ECE4" />
+          <View style={styles.notifDot} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        style={styles.scrollView}
+      <ScrollView
+        style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#FC6A0A']}
-            tintColor="#FC6A0A"
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FC6A0A']} tintColor="#FC6A0A" />}
       >
-        {/* Hero Banner */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroOverlay}>
-            <View style={styles.decorativeCircle1} />
-            <View style={styles.decorativeCircle2} />
+        {/* ── Hero ── */}
+        <View style={styles.hero}>
+          <View style={styles.heroContent}>
+            <Text style={styles.heroGreeting}>Selamat Datang 👋</Text>
+            <Text style={styles.heroDate}>{dateStr}</Text>
+            <View style={styles.heroBadge}>
+              <Octicons name="clock" size={11} color="#FC6A0A" />
+              <Text style={styles.heroBadgeText}>{timeStr} WIB</Text>
+            </View>
           </View>
+          <View style={styles.heroOrb1} />
+          <View style={styles.heroOrb2} />
+          <View style={styles.heroOrb3} />
         </View>
 
-        {/* Laporan Harian Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>LAPORAN HARIAN</Text>
-          <Text style={styles.sectionSubtitle}>
-            {currentTime.toLocaleString('id-ID', { 
-              day: '2-digit', 
-              month: 'long', 
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </Text>
+        {/* ── Section Label ── */}
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionLabelText}>LAPORAN HARIAN</Text>
+          <View style={styles.sectionLabelLine} />
         </View>
 
-        <View style={styles.statsContainer}>
-          <StatCard 
-            title="Total Produk" 
-            value={dashboardData.totalProduk} 
-            icon="📦" 
-            delay={0} 
-          />
-          <StatCard 
-            title="Pengunjung Hari ini" 
-            value={dashboardData.pengunjungHariIni} 
-            icon="👥" 
-            delay={200} 
-          />
-          <StatCard 
-            title="Total Penjualan" 
-            value={dashboardData.totalStok} 
-            icon="💰" 
-            delay={400}
-            isCurrency={true}
-          />
-        </View>
+        {/* ── Stat Cards ── */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statRow}
+        >
+          <StatCard title="Total Stok" value={dashboardData.totalProduk} icon="👟" delay={0} />
+          <StatCard title="Pengunjung" value={dashboardData.pengunjungHariIni} icon="👥" delay={150} accent />
+          <StatCard title="Transaksi" value={dashboardData.transaksiHariIni} icon="💰" delay={300} />
+        </ScrollView>
 
-        {/* Charts */}
-        <View style={styles.mainGrid}>
-          <SimplePieChart 
+        {/* ── Charts ── */}
+        <View style={styles.chartsSection}>
+          <ModernPieChart
             data={dashboardData.produkTerlaris}
             title="Produk Terlaris"
             subtitle="Distribusi unit per produk"
           />
-          
           <SimpleBarChart
             data={dashboardData.grafikPengunjung.map(d => d.nilai)}
             labels={dashboardData.grafikPengunjung.map(d => d.hari)}
-            title="Grafik Pengunjung Mingguan"
-            subtitle="Laporan pengunjung selama seminggu"
+            title="Pengunjung Mingguan"
+            subtitle="Laporan 7 hari terakhir"
           />
         </View>
 
-        {/* Transactions */}
-        <TransactionTable transactions={dashboardData.transaksiTerbaru} />
+        {/* ── Transactions ── */}
+        <TransactionTable transactions={dashboardData.transaksiTerbaru} navigation={navigation} />
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
     </View>
   );
 };
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5ECE4',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5ECE4',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#585757',
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#F0E8DF' },
+
+  // Loading
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F0E8DF' },
+  loadingText: { marginTop: 14, fontSize: 14, color: '#585757', fontWeight: '600', letterSpacing: 0.5 },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#292929',
+    backgroundColor: '#1C1C1C',
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 20,
+    paddingTop: 54,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(252,106,10,0.25)',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoBox: {
+    width: 38, height: 38,
+    borderRadius: 10,
     backgroundColor: '#F5ECE4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F5ECE4',
-    letterSpacing: 1,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#FC6A0A',
-    marginTop: 2,
-  },
-  notificationButton: {
-    position: 'relative',
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FC6A0A',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  heroBanner: {
-    height: 180,
-    backgroundColor: '#292929',
-    position: 'relative',
+    justifyContent: 'center', alignItems: 'center',
     overflow: 'hidden',
   },
-  heroOverlay: {
-    flex: 1,
-    position: 'relative',
+  logoImage: { width: '100%', height: '100%' },
+  headerBrand: { fontSize: 15, fontWeight: '800', color: '#F5ECE4', letterSpacing: 1.5 },
+  headerTagline: { fontSize: 11, color: '#FC6A0A', marginTop: 1, fontWeight: '500', letterSpacing: 0.5 },
+  notifBtn: { position: 'relative', padding: 4 },
+  notifDot: { position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: 4, backgroundColor: '#FC6A0A', borderWidth: 1.5, borderColor: '#1C1C1C' },
+
+  // Scroll
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 24 },
+
+  // Hero
+  hero: {
+    backgroundColor: '#292929',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 20,
+    padding: 24,
+    overflow: 'hidden',
+    minHeight: 130,
   },
-  decorativeCircle1: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FC6A0A',
-    opacity: 0.2,
-    top: -20,
-    left: 30,
+  heroContent: { zIndex: 2, position: 'relative' },
+  heroGreeting: { fontSize: 13, color: '#FC6A0A', fontWeight: '600', letterSpacing: 0.5, marginBottom: 4 },
+  heroDate: { fontSize: 20, fontWeight: '800', color: '#F5ECE4', letterSpacing: 0.3, lineHeight: 26 },
+  heroBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 12, alignSelf: 'flex-start',
+    backgroundColor: 'rgba(252,106,10,0.15)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, borderWidth: 1, borderColor: 'rgba(252,106,10,0.3)',
   },
-  decorativeCircle2: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E74504',
-    opacity: 0.3,
-    bottom: 20,
-    right: 40,
-  },
-  sectionHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#292929',
-    letterSpacing: 1,
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: '#585757',
-    marginTop: 4,
-  },
-  statsContainer: {
-    paddingHorizontal: 20,
-  },
+  heroBadgeText: { fontSize: 12, color: '#FC6A0A', fontWeight: '600' },
+  heroOrb1: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: '#FC6A0A', opacity: 0.12, top: -30, right: 20, zIndex: 0 },
+  heroOrb2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: '#E74504', opacity: 0.2, bottom: -10, right: 80, zIndex: 0 },
+  heroOrb3: { position: 'absolute', width: 40, height: 40, borderRadius: 20, backgroundColor: '#FC6A0A', opacity: 0.1, top: 20, right: 130, zIndex: 0 },
+
+  // Section Label
+  sectionLabel: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 24, marginBottom: 14, gap: 10 },
+  sectionLabelText: { fontSize: 11, fontWeight: '800', color: '#585757', letterSpacing: 2 },
+  sectionLabelLine: { flex: 1, height: 1, backgroundColor: 'rgba(88,87,87,0.2)' },
+
+  // Stat Cards (horizontal scroll)
+  statRow: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
   statCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    width: 150,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#585757',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(88,87,87,0.15)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  statIconContainer: {
-    width: 56,
-    height: 56,
+  statCardAccent: {
+    backgroundColor: '#ffffff',
+    borderColor: 'rgba(204, 178, 178, 0.4)',
+  },
+  statIconBadge: {
+    width: 44, height: 44,
     borderRadius: 12,
     backgroundColor: '#F5ECE4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 14,
   },
-  statIconText: {
-    fontSize: 28,
-  },
-  statContent: {
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: '#585757',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#292929',
-  },
-  mainGrid: {
-    paddingHorizontal: 20,
-    marginTop: 12,
-  },
+  statIconBadgeAccent: { backgroundColor: 'rgba(252,106,10,0.15)' },
+  statIconText: { fontSize: 22 },
+  statLabel: { fontSize: 11, color: '#585757', fontWeight: '600', letterSpacing: 0.3, marginBottom: 6 },
+  statLabelAccent: { color: '#8a8a8a' },
+  statValue: { fontSize: 22, fontWeight: '800', color: '#292929', letterSpacing: -0.5 },
+
+  // Charts
+  chartsSection: { paddingHorizontal: 16, marginTop: 20, gap: 14 },
   chartCard: {
     backgroundColor: '#292929',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
-    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(252,106,10,0.15)',
   },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#F5ECE4',
-    marginBottom: 4,
+  modernChartCard: {
+    backgroundColor: '#292929',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(252,106,10,0.15)',
   },
-  chartSubtitle: {
-    fontSize: 12,
-    color: '#585757',
-    marginBottom: 16,
+  chartCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 18 },
+  chartTitleDot: { width: 4, height: 28, borderRadius: 2, backgroundColor: '#FC6A0A', marginTop: 2 },
+  chartTitle: { fontSize: 16, fontWeight: '700', color: '#F5ECE4', letterSpacing: 0.3 },
+  chartSubtitle: { fontSize: 12, color: '#585757', marginTop: 3 },
+
+  periodBadge: {
+    backgroundColor: 'rgba(252,106,10,0.15)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, borderWidth: 1, borderColor: 'rgba(252,106,10,0.3)',
   },
+  periodText: { fontSize: 11, color: '#FC6A0A', fontWeight: '700' },
+
+  // Pie Chart
+  pieLayout: { alignItems: 'center', gap: 4 },
+  pieChartWrapper: { position: 'relative', justifyContent: 'center', alignItems: 'center' },
+  centerTextContainer: { position: 'absolute', justifyContent: 'center', alignItems: 'center' },
+  centerValue: { fontSize: 28, fontWeight: '800', color: '#F5ECE4', letterSpacing: -0.5 },
+  centerLabel: { fontSize: 11, color: '#585757', marginTop: 2, fontWeight: '500' },
+
+  legendList: { width: '100%', gap: 8 },
+  legendRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'rgba(245,236,228,0.05)',
+    borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: 'rgba(245,236,228,0.08)',
+  },
+  legendRowSelected: { backgroundColor: 'rgba(252,106,10,0.1)', borderColor: 'rgba(252,106,10,0.3)' },
+  legendSwatch: { width: 28, height: 28, borderRadius: 7 },
+  legendText: { flex: 1 },
+  legendName: { fontSize: 13, color: '#F5ECE4', fontWeight: '600' },
+  legendSub: { fontSize: 11, color: '#585757', marginTop: 2 },
+  legendPct: { fontSize: 14, color: '#F5ECE4', fontWeight: '700' },
+
+  // Bar Chart
   barChart: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 160,
-    paddingHorizontal: 4,
-  },
-  barWrapper: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  barColumn: {
-    width: '80%',
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '100%',
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 6,
-    minHeight: 20,
-  },
-  barValue: {
-    fontSize: 11,
-    color: '#F5ECE4',
+    height: 140,
     marginTop: 4,
-    fontWeight: '600',
   },
-  barLabel: {
-    fontSize: 9,
-    color: '#585757',
-    marginTop: 4,
-    textAlign: 'center',
+  barWrapper: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
+  barTrack: { width: '65%', height: 110, justifyContent: 'flex-end', borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(88,87,87,0.2)' },
+  bar: { width: '100%', borderTopLeftRadius: 6, borderTopRightRadius: 6, minHeight: 4 },
+  barValue: { fontSize: 10, color: '#585757', marginBottom: 4, fontWeight: '600' },
+  barValueHighlight: { color: '#FC6A0A' },
+  barLabel: { fontSize: 9, color: '#585757', marginTop: 6, fontWeight: '500', letterSpacing: 0.3 },
+
+  // Empty states
+  emptyState: { alignItems: 'center', paddingVertical: 36, gap: 10 },
+  emptyText: { fontSize: 13, color: '#585757', textAlign: 'center' },
+
+  // Transactions
+  txSection: { paddingHorizontal: 16, marginTop: 20 },
+  txHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  txTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  txTitle: { fontSize: 16, fontWeight: '700', color: '#292929', letterSpacing: 0.3 },
+  viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewAllText: { fontSize: 13, color: '#FC6A0A', fontWeight: '600' },
+
+  txCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(88,87,87,0.15)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  legendContainer: {
-    marginTop: 8,
+  txTableHead: {
+    flexDirection: 'row',
+    backgroundColor: '#292929',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
   },
-  legendItem: {
+  thText: { fontSize: 10, fontWeight: '800', color: '#F5ECE4', letterSpacing: 1, textTransform: 'uppercase' },
+  txRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E8DF',
   },
-  legendColor: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    marginRight: 12,
+  txRowEven: { backgroundColor: '#FDFAF7' },
+  tdId: { fontSize: 12, color: '#585757', fontWeight: '500' },
+  tdText: { fontSize: 13, color: '#292929', fontWeight: '500' },
+  tdAmount: { fontSize: 13, color: '#292929', fontWeight: '700' },
+
+  qtyBadge: {
+    backgroundColor: 'rgba(252,106,10,0.12)',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1, borderColor: 'rgba(252,106,10,0.25)',
   },
-  legendTextContainer: {
-    flex: 1,
-  },
-  legendText: {
-    fontSize: 14,
-    color: '#F5ECE4',
-    fontWeight: '500',
-  },
-  legendSubtext: {
-    fontSize: 12,
-    color: '#585757',
-    marginTop: 2,
-  },
-  legendPercentage: {
-    fontSize: 16,
-    color: '#F5ECE4',
-    fontWeight: 'bold',
-  },
-  transactionSection: {
-    marginTop: 8,
-    paddingHorizontal: 20,
-  },
-  transactionHeader: {
+  qtyText: { fontSize: 12, color: '#FC6A0A', fontWeight: '700' },
+
+  txEmpty: { alignItems: 'center', paddingVertical: 36, gap: 10 },
+  txEmptyText: { fontSize: 13, color: '#585757' },
+
+  // Pagination
+  paginationRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  transactionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#292929',
-  },
-  viewAllButton: {
-    fontSize: 14,
-    color: '#FC6A0A',
-    fontWeight: '600',
-  },
-  transactionTable: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#585757',
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#292929',
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F0E8DF',
+    backgroundColor: '#FDFAF7',
   },
-  tableHeaderText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#F5ECE4',
-    textTransform: 'uppercase',
-  },
-  tableRow: {
+  pageBtn: {
     flexDirection: 'row',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5ECE4',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(252,106,10,0.3)',
+    backgroundColor: 'rgba(252,106,10,0.06)',
   },
-  tableCell: {
+  pageBtnDisabled: {
+    borderColor: 'rgba(88,87,87,0.15)',
+    backgroundColor: 'transparent',
+  },
+  pageBtnText: {
     fontSize: 13,
+    fontWeight: '600',
+    color: '#FC6A0A',
+  },
+  pageBtnTextDisabled: {
+    color: '#C0B8B0',
+  },
+  pageInfo: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#292929',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#585757',
-  },
-  emptyTableRow: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  emptyTableText: {
-    fontSize: 14,
-    color: '#585757',
   },
 });
 
